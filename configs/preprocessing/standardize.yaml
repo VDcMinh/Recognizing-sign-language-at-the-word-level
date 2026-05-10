@@ -1,0 +1,14 @@
+standardize:
+  input_manifest: data/datasets/WLASL/index/index_nslt100.csv
+  output_root: data/datasets/WLASL/standardized
+  output_size:
+    width: 256
+    height: 256
+  frame_sampling:
+    strategy: uniform
+    target_fps: null
+    max_frames: 150
+  margin_ratio: 0.15
+  letterbox: true
+  save_frames: true
+  save_video: true

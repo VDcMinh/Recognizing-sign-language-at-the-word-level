@@ -1,0 +1,13 @@
+branch: skeleton
+keypoint_set: selected_31
+num_keypoints: 31
+model:
+  name: CTR-GCN
+  num_frames: 150
+  input_channels: 3
+training:
+  batch_size: 16
+  learning_rate: 0.001
+  optimizer: adamw
+  epochs: 50
+label_smoothing: false

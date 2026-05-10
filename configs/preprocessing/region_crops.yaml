@@ -1,0 +1,12 @@
+regions:
+  source_pose_dir: data/datasets/WLASL/pose/rtmw_l/wholebody_133
+  source_frames_dir: data/datasets/WLASL/standardized/frames
+  output_dir: data/datasets/WLASL/branch_inputs/regions/rtmw_l
+  crop_size:
+    width: 160
+    height: 160
+  regions:
+    - face
+    - left_hand
+    - right_hand
+  save_combined_preview: true

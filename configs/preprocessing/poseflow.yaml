@@ -1,0 +1,8 @@
+poseflow:
+  source_pose_dir: data/datasets/WLASL/pose/rtmw_l/wholebody_133
+  output_dir: data/datasets/WLASL/branch_inputs/hand_poseflow/rtmw_l
+  poseflow_variants:
+    - selected_31
+    - hands_only
+  temporal_stride: 1
+  normalize_motion: true

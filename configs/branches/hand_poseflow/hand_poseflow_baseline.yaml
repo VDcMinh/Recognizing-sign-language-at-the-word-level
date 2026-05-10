@@ -1,0 +1,11 @@
+branch: hand_poseflow
+inputs:
+  left_hand_dir: data/datasets/WLASL/branch_inputs/hand_poseflow/rtmw_l/hand_sequences/left_hand
+  right_hand_dir: data/datasets/WLASL/branch_inputs/hand_poseflow/rtmw_l/hand_sequences/right_hand
+  poseflow_dir: data/datasets/WLASL/branch_inputs/hand_poseflow/rtmw_l/poseflow/selected_31
+model:
+  name: two_stream
+  num_frames: 64
+training:
+  batch_size: 8
+  learning_rate: 0.0005

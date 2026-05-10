@@ -1,0 +1,7 @@
+experiment:
+  name: skeleton_nslt100_debug
+  branch_config: configs/branches/skeleton/stgcnpp_31.yaml
+  dataset_config: configs/dataset/wlasl.yaml
+  subset: nslt100
+  split: train
+  output_dir: experiments/skeleton/skeleton_nslt100_debug

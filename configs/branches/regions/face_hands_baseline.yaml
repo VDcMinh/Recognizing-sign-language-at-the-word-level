@@ -1,0 +1,11 @@
+branch: regions
+inputs:
+  face_dir: data/datasets/WLASL/branch_inputs/regions/rtmw_l/face
+  left_hand_dir: data/datasets/WLASL/branch_inputs/regions/rtmw_l/left_hand
+  right_hand_dir: data/datasets/WLASL/branch_inputs/regions/rtmw_l/right_hand
+model:
+  name: cnn_lstm
+  num_frames: 64
+training:
+  batch_size: 8
+  learning_rate: 0.0005

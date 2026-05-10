@@ -1,0 +1,14 @@
+index:
+  subset: nslt100
+  split_names:
+    - train
+    - val
+    - test
+  metadata_filename_map:
+    nslt100: nslt_100.json
+    nslt300: nslt_300.json
+    nslt1000: nslt_1000.json
+    nslt2000: nslt_2000.json
+  class_list_file: data/datasets/WLASL/raw/metadata/wlasl_class_list.txt
+  output_dir: data/datasets/WLASL/index
+  reports_dir: data/datasets/WLASL/index/reports

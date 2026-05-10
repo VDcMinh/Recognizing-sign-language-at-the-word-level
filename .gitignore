@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs and local runtime artifacts
+*.log
+logs/
+
+# Raw dataset policy:
+# - keep raw metadata/docs visible to git if needed
+# - never commit raw videos
+data/datasets/WLASL/raw/videos/**
+!data/datasets/WLASL/raw/videos/.gitkeep
+
+# Generated dataset layers
+data/datasets/WLASL/standardized/
+data/datasets/WLASL/pose/
+data/datasets/WLASL/branch_inputs/
+data/datasets/WLASL/audits/
+
+# Model checkpoints
+checkpoints/**/*.pth
+checkpoints/**/*.pt
+checkpoints/**/*.ckpt
+
+# Experiment outputs
+experiments/**/runs/
+experiments/**/outputs/
+experiments/**/wandb/
+
+# Generated figures
+reports/figures/generated/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak

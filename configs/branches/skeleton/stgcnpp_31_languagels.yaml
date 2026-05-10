@@ -1,0 +1,17 @@
+branch: skeleton
+keypoint_set: selected_31
+num_keypoints: 31
+model:
+  name: ST-GCN++
+  num_frames: 150
+  input_channels: 3
+training:
+  batch_size: 16
+  learning_rate: 0.001
+  optimizer: adamw
+  epochs: 50
+label_smoothing: language
+epsilon: 0.3
+embedding:
+  backend: fasttext
+  path: TO_BE_FILLED

@@ -1,0 +1,16 @@
+dataset:
+  name: WLASL
+  root: data/datasets/WLASL
+  raw_metadata_path: data/datasets/WLASL/raw/metadata
+  raw_video_dir: data/datasets/WLASL/raw/videos
+  raw_docs_dir: data/datasets/WLASL/raw/docs
+  available_subsets:
+    - nslt100
+    - nslt300
+    - nslt1000
+    - nslt2000
+  default_subset: nslt100
+  default_splits:
+    - train
+    - val
+    - test

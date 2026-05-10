@@ -1,0 +1,11 @@
+pose:
+  backend: rtmw_l
+  expected_keypoints: 133
+  input_source: standardized_videos
+  standardized_videos_dir: data/datasets/WLASL/standardized/videos
+  standardized_frames_dir: data/datasets/WLASL/standardized/frames
+  output_dir: data/datasets/WLASL/pose/rtmw_l/wholebody_133
+  manifests_dir: data/datasets/WLASL/pose/rtmw_l/manifests
+  checkpoint:
+    config: TO_BE_FILLED
+    weights: TO_BE_FILLED
