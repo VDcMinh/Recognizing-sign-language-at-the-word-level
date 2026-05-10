@@ -1,6 +1,6 @@
-numpy
+numpy==1.26.4
 pandas
-opencv-python
+opencv-python==4.10.0.84
 pyyaml
 tqdm
 scikit-learn

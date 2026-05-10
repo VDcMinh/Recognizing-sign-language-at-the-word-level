@@ -1,0 +1,17 @@
+# RTMW-l / MMPose environment
+# Install torch/torchvision separately with the PyTorch CUDA index first.
+
+torch==2.1.2+cu121
+torchvision==0.16.2+cu121
+
+mmengine==0.10.7
+mmcv==2.1.0
+mmdet==3.2.0
+mmpose==1.3.2
+
+xtcocotools==1.14.3
+munkres
+json-tricks
+rich
+
+
