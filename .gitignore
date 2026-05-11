@@ -109,3 +109,17 @@ Thumbs.db
 *.swp
 *.swo
 
+
+
+
+
+# Generated data: WLASL index layer
+data/datasets/WLASL/index/**/*.csv
+data/datasets/WLASL/index/**/*.json
+data/datasets/WLASL/index/**/*.txt
+data/datasets/WLASL/index/**/*.md
+data/datasets/WLASL/index/**/*.log
+
+# Keep placeholders
+!data/datasets/WLASL/index/**/.gitkeep
+

@@ -1,14 +1,26 @@
-index:
-  subset: nslt100
-  split_names:
-    - train
-    - val
-    - test
-  metadata_filename_map:
+dataset:
+  name: WLASL
+  root: data/datasets/WLASL
+  raw_root: data/datasets/WLASL/raw
+  metadata_dir: data/datasets/WLASL/raw/metadata
+  videos_dir: data/datasets/WLASL/raw/videos
+
+metadata:
+  master_file: WLASL_v0.3.json
+  class_list_file: wlasl_class_list.txt
+  missing_file: missing.txt
+  nslt_files:
     nslt100: nslt_100.json
     nslt300: nslt_300.json
     nslt1000: nslt_1000.json
     nslt2000: nslt_2000.json
-  class_list_file: data/datasets/WLASL/raw/metadata/wlasl_class_list.txt
-  output_dir: data/datasets/WLASL/index
-  reports_dir: data/datasets/WLASL/index/reports
+
+output:
+  index_root: data/datasets/WLASL/index
+
+options:
+  video_id_width: 5
+  video_extension: ".mp4"
+  keep_nslt_only: true
+  write_available_manifests: true
+  fail_on_missing_raw_metadata: true

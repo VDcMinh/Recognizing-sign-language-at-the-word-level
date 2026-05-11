@@ -31,6 +31,23 @@ def write_json(data: Any, path: str | Path, indent: int = 2) -> None:
         json.dump(data, handle, indent=indent, ensure_ascii=False)
 
 
+def read_text_lines(path: str | Path, drop_empty: bool = False) -> list[str]:
+    """Read a text file into a list of stripped lines."""
+
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    if drop_empty:
+        return [line.strip() for line in lines if line.strip()]
+    return [line.rstrip("\n\r") for line in lines]
+
+
+def write_text(text: str, path: str | Path) -> None:
+    """Write plain text to a file."""
+
+    target = Path(path)
+    ensure_dir(target.parent)
+    target.write_text(text, encoding="utf-8")
+
+
 def read_yaml(path: str | Path) -> dict[str, Any]:
     """Read a YAML file into a dictionary."""
 
@@ -68,3 +85,11 @@ def write_csv(frame, path: str | Path, **kwargs) -> None:
     target = Path(path)
     ensure_dir(target.parent)
     frame.to_csv(target, index=False, **kwargs)
+
+
+def write_dataframe_csv(frame, path: str | Path, **kwargs) -> None:
+    """Write a dataframe as UTF-8 CSV with a stable default configuration."""
+
+    defaults = {"encoding": "utf-8"}
+    defaults.update(kwargs)
+    write_csv(frame, path, **defaults)
