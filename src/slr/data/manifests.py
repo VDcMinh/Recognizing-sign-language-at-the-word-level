@@ -103,18 +103,34 @@ INDEX_COLUMNS = [
 ]
 
 STANDARDIZED_COLUMNS = [
+    "instance_uid",
     "sample_id",
     "video_id",
     "gloss",
     "class_id",
     "split",
+    "raw_video_path",
     "standardized_video_path",
     "frames_dir",
     "num_frames",
-    "output_size",
-    "crop_bbox",
+    "fps",
+    "original_width",
+    "original_height",
+    "output_width",
+    "output_height",
+    "original_start_frame",
+    "original_end_frame",
+    "used_start_frame",
+    "used_end_frame",
+    "original_bbox",
+    "used_bbox",
+    "crop_applied",
+    "bbox_fallback_used",
+    "save_frames",
+    "save_video",
     "status",
     "error_message",
+    "notes",
 ]
 
 POSE_NPZ_FIELDS = [
