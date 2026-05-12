@@ -143,6 +143,34 @@ POSE_NPZ_FIELDS = [
     "split",
 ]
 
+POSE_MANIFEST_COLUMNS = [
+    "instance_uid",
+    "sample_id",
+    "video_id",
+    "gloss",
+    "class_id",
+    "split",
+    "frames_dir",
+    "pose_path",
+    "keypoint_layout",
+    "pose_backend",
+    "num_frames_input",
+    "num_frames_pose",
+    "image_height",
+    "image_width",
+    "mean_confidence",
+    "body_mean_confidence",
+    "face_mean_confidence",
+    "left_hand_mean_confidence",
+    "right_hand_mean_confidence",
+    "valid_frames",
+    "valid_frames_ratio",
+    "missing_frames",
+    "status",
+    "error_message",
+    "notes",
+]
+
 SKELETON_NPZ_FIELDS = [
     "keypoints",
     "keypoint_set",
