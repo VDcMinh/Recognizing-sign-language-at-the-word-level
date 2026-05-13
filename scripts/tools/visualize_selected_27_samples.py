@@ -1,4 +1,4 @@
-"""Visualize selected_27 skeleton keypoints on standardized frames."""
+"""Visualize reduced skeleton keypoints on standardized frames."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from slr.utils.io import ensure_dir, write_text
 BODY_COLOR = (255, 220, 0)
 LEFT_HAND_COLOR = (0, 200, 0)
 RIGHT_HAND_COLOR = (0, 140, 255)
+MOUTH_COLOR = (255, 80, 120)
 TEXT_COLOR = (240, 240, 240)
 PANEL_BG = (24, 24, 24)
 LEGEND_BG = (36, 36, 36)
@@ -26,6 +27,10 @@ FRAME_BORDER = (72, 72, 72)
 BODY_INDICES = tuple(range(0, 7))
 LEFT_HAND_INDICES = tuple(range(7, 17))
 RIGHT_HAND_INDICES = tuple(range(17, 27))
+MOUTH_INDICES_BY_SET = {
+    "selected_27": (),
+    "selected_31": tuple(range(27, 31)),
+}
 BODY_EDGES = ((0, 1), (0, 2), (1, 3), (2, 4), (3, 5), (4, 6))
 LEFT_HAND_EDGES = ((7, 8), (9, 10), (11, 12), (13, 14), (15, 16))
 RIGHT_HAND_EDGES = ((17, 18), (19, 20), (21, 22), (23, 24), (25, 26))
@@ -35,7 +40,14 @@ def build_parser() -> argparse.ArgumentParser:
     """Create the CLI parser."""
 
     parser = argparse.ArgumentParser(
-        description="Visualize selected_27 overlays on standardized frames."
+        description="Visualize selected_27 or selected_31 overlays on standardized frames."
+    )
+    parser.add_argument(
+        "--keypoint-set",
+        type=str,
+        default="selected_31",
+        choices=["selected_27", "selected_31"],
+        help="Reduced keypoint set to visualize.",
     )
     parser.add_argument(
         "--subset",
@@ -58,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("reports/preprocessing/selected_27_visualization/nslt100"),
+        default=None,
         help="Directory where visualization PNGs and report are written.",
     )
     return parser
@@ -70,12 +82,12 @@ def _read_csv(path: Path) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def load_manifests(subset: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_manifests(keypoint_set: str, subset: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load skeleton and pose manifests for one subset."""
 
     skeleton_manifest = _read_csv(
         Path("data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests")
-        / f"{subset}_selected_27_all.csv"
+        / f"{subset}_{keypoint_set}_all.csv"
     )
     pose_manifest = _read_csv(
         Path("data/datasets/WLASL/pose/rtmw_l/manifests")
@@ -176,6 +188,29 @@ def choose_frame_indices(num_frames: int) -> list[int]:
     return [0, num_frames // 2, num_frames - 1]
 
 
+def get_group_specs(keypoint_set: str) -> list[dict[str, Any]]:
+    """Return draw-group definitions for one reduced keypoint set."""
+
+    specs = [
+        {"indices": BODY_INDICES, "color": BODY_COLOR, "prefix": "B"},
+        {"indices": LEFT_HAND_INDICES, "color": LEFT_HAND_COLOR, "prefix": "L"},
+        {"indices": RIGHT_HAND_INDICES, "color": RIGHT_HAND_COLOR, "prefix": "R"},
+    ]
+    mouth_indices = MOUTH_INDICES_BY_SET.get(keypoint_set, ())
+    if mouth_indices:
+        specs.append({"indices": mouth_indices, "color": MOUTH_COLOR, "prefix": "M"})
+    return specs
+
+
+def build_legend_subtitle(keypoint_set: str) -> str:
+    """Return the legend subtitle for one keypoint set."""
+
+    subtitle = "Body = cyan | Left hand = green | Right hand = orange"
+    if MOUTH_INDICES_BY_SET.get(keypoint_set):
+        subtitle += " | Mouth = pink"
+    return subtitle
+
+
 def draw_keypoint_group(
     image: np.ndarray,
     keypoints: np.ndarray,
@@ -228,17 +263,27 @@ def draw_edges(
         )
 
 
-def draw_overlay(image: np.ndarray, keypoints: np.ndarray, frame_label: str) -> np.ndarray:
-    """Draw the full selected_27 overlay onto one frame."""
+def draw_overlay(
+    image: np.ndarray,
+    keypoints: np.ndarray,
+    frame_label: str,
+    keypoint_set: str,
+) -> np.ndarray:
+    """Draw the full selected-keypoint overlay onto one frame."""
 
     canvas = image.copy()
     draw_edges(canvas, keypoints, BODY_EDGES, BODY_COLOR)
     draw_edges(canvas, keypoints, LEFT_HAND_EDGES, LEFT_HAND_COLOR)
     draw_edges(canvas, keypoints, RIGHT_HAND_EDGES, RIGHT_HAND_COLOR)
 
-    draw_keypoint_group(canvas, keypoints, BODY_INDICES, BODY_COLOR, "B")
-    draw_keypoint_group(canvas, keypoints, LEFT_HAND_INDICES, LEFT_HAND_COLOR, "L")
-    draw_keypoint_group(canvas, keypoints, RIGHT_HAND_INDICES, RIGHT_HAND_COLOR, "R")
+    for spec in get_group_specs(keypoint_set):
+        draw_keypoint_group(
+            canvas,
+            keypoints,
+            spec["indices"],
+            spec["color"],
+            spec["prefix"],
+        )
 
     cv2.putText(
         canvas,
@@ -254,14 +299,23 @@ def draw_overlay(image: np.ndarray, keypoints: np.ndarray, frame_label: str) -> 
     return canvas
 
 
-def build_legend_panel(width: int, height: int) -> np.ndarray:
+def build_legend_panel(width: int, height: int, keypoint_set: str) -> np.ndarray:
     """Build a legend panel that explains index-to-name mapping."""
 
     panel = np.full((height, width, 3), LEGEND_BG, dtype=np.uint8)
-    cv2.putText(panel, "selected_27 legend", (14, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.7, TEXT_COLOR, 2, cv2.LINE_AA)
-    cv2.putText(panel, "Body = cyan | Left hand = green | Right hand = orange", (14, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.45, TEXT_COLOR, 1, cv2.LINE_AA)
+    cv2.putText(panel, f"{keypoint_set} legend", (14, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.7, TEXT_COLOR, 2, cv2.LINE_AA)
+    cv2.putText(
+        panel,
+        build_legend_subtitle(keypoint_set),
+        (14, 48),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        TEXT_COLOR,
+        1,
+        cv2.LINE_AA,
+    )
 
-    names = get_keypoint_set_names("selected_27")
+    names = get_keypoint_set_names(keypoint_set)
     y = 78
     for index, name in enumerate(names):
         if index in BODY_INDICES:
@@ -270,6 +324,9 @@ def build_legend_panel(width: int, height: int) -> np.ndarray:
         elif index in LEFT_HAND_INDICES:
             color = LEFT_HAND_COLOR
             prefix = "L"
+        elif index in MOUTH_INDICES_BY_SET.get(keypoint_set, ()):
+            color = MOUTH_COLOR
+            prefix = "M"
         else:
             color = RIGHT_HAND_COLOR
             prefix = "R"
@@ -295,6 +352,7 @@ def build_contact_sheet(
     frame_images: list[np.ndarray],
     hand_score: float,
     frame_indices: list[int],
+    keypoint_set: str,
 ) -> np.ndarray:
     """Assemble three overlays plus one legend panel into a contact sheet."""
 
@@ -307,7 +365,7 @@ def build_contact_sheet(
         dtype=np.uint8,
     )
 
-    title = f"{split} | {sample_id} | {gloss} | hand_score={hand_score:.3f}"
+    title = f"{split} | {sample_id} | {gloss} | {keypoint_set} | hand_score={hand_score:.3f}"
     cv2.putText(canvas, title, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.72, TEXT_COLOR, 2, cv2.LINE_AA)
     cv2.putText(canvas, f"Frames visualized: {frame_indices}", (12, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.48, TEXT_COLOR, 1, cv2.LINE_AA)
 
@@ -315,12 +373,12 @@ def build_contact_sheet(
         x0 = idx * frame_width
         canvas[title_height : title_height + frame_height, x0 : x0 + frame_width] = frame_image
 
-    legend = build_legend_panel(legend_width, frame_height)
+    legend = build_legend_panel(legend_width, frame_height, keypoint_set)
     canvas[title_height : title_height + frame_height, frame_width * 3 : frame_width * 3 + legend_width] = legend
     return canvas
 
 
-def visualize_one_sample(row: pd.Series, output_dir: Path) -> Path:
+def visualize_one_sample(row: pd.Series, output_dir: Path, keypoint_set: str) -> Path:
     """Render one sample contact sheet and save it as PNG."""
 
     sample_id = str(row["sample_id"])
@@ -346,7 +404,12 @@ def visualize_one_sample(row: pd.Series, output_dir: Path) -> Path:
     overlays: list[np.ndarray] = []
     for frame_index in frame_indices:
         frame_image = read_image(frame_paths[frame_index])
-        overlay = draw_overlay(frame_image, keypoints[frame_index], f"frame {frame_index + 1}/{len(frame_paths)}")
+        overlay = draw_overlay(
+            frame_image,
+            keypoints[frame_index],
+            f"frame {frame_index + 1}/{len(frame_paths)}",
+            keypoint_set=keypoint_set,
+        )
         overlays.append(overlay)
 
     sheet = build_contact_sheet(
@@ -356,19 +419,29 @@ def visualize_one_sample(row: pd.Series, output_dir: Path) -> Path:
         frame_images=overlays,
         hand_score=hand_score,
         frame_indices=frame_indices,
+        keypoint_set=keypoint_set,
     )
     output_path = output_dir / f"{split}_{sample_id}_{gloss}.png"
     save_image(output_path, sheet)
     return output_path
 
 
-def build_report(output_dir: Path, selected_samples: pd.DataFrame, image_paths: list[Path]) -> str:
+def build_report(
+    output_dir: Path,
+    selected_samples: pd.DataFrame,
+    image_paths: list[Path],
+    keypoint_set: str,
+) -> str:
     """Build a short Markdown index for the generated visualizations."""
 
     lines = [
-        "# selected_27 Visualization Report",
+        f"# {keypoint_set} Visualization Report",
         "",
-        "Muc tieu: kiem tra nhanh mapping body/left-hand/right-hand cua selected_27 bang overlay tren standardized frames.",
+        (
+            "Muc tieu: kiem tra nhanh mapping body/left-hand/right-hand"
+            + (" va mouth" if keypoint_set == "selected_31" else "")
+            + f" cua {keypoint_set} bang overlay tren standardized frames."
+        ),
         "",
         "## Samples",
         "",
@@ -392,8 +465,11 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    output_dir = ensure_dir(args.output_dir)
-    skeleton_manifest, pose_manifest = load_manifests(args.subset)
+    output_dir = ensure_dir(
+        args.output_dir
+        or Path("reports/preprocessing") / f"{args.keypoint_set}_visualization" / args.subset
+    )
+    skeleton_manifest, pose_manifest = load_manifests(args.keypoint_set, args.subset)
     selected_samples = select_samples(
         skeleton_manifest=skeleton_manifest,
         pose_manifest=pose_manifest,
@@ -403,10 +479,10 @@ def main() -> int:
 
     image_paths: list[Path] = []
     for _, row in selected_samples.iterrows():
-        image_paths.append(visualize_one_sample(row, output_dir))
+        image_paths.append(visualize_one_sample(row, output_dir, keypoint_set=args.keypoint_set))
 
     report_path = output_dir / "README.md"
-    report_text = build_report(output_dir, selected_samples, image_paths)
+    report_text = build_report(output_dir, selected_samples, image_paths, keypoint_set=args.keypoint_set)
     write_text(report_text, report_path)
 
     print(f"Generated {len(image_paths)} visualization(s) in {output_dir}")
