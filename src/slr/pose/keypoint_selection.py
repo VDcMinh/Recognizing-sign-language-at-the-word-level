@@ -10,7 +10,7 @@ import numpy as np
 from slr.pose.pose_schema import (
     WHOLEBODY_133_LAYOUT,
     get_keypoint_indices,
-    get_keypoint_names,
+    get_keypoint_set_names,
 )
 
 
@@ -40,7 +40,7 @@ def build_selected_keypoints_npz_payload(
     """Build a stable payload for one selected-keypoints ``.npz`` file."""
 
     indices = get_keypoint_indices(keypoint_set)
-    names = get_keypoint_names(indices)
+    names = get_keypoint_set_names(keypoint_set)
     return {
         "keypoints": np.asarray(keypoints, dtype=np.float32),
         "selected_indices": np.asarray(indices, dtype=np.int32),

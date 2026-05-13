@@ -76,9 +76,15 @@ HAND_10_LOCAL = (
 )
 LEFT_HAND_10 = tuple(91 + index for index in HAND_10_LOCAL)
 RIGHT_HAND_10 = tuple(112 + index for index in HAND_10_LOCAL)
+MOUTH_4 = (
+    71,  # mouth_left_corner = 23 + 48
+    77,  # mouth_right_corner = 23 + 54
+    74,  # upper_lip = 23 + 51
+    80,  # lower_lip = 23 + 57
+)
 
 SELECTED_27 = BODY_7 + LEFT_HAND_10 + RIGHT_HAND_10
-SELECTED_31: tuple[int, ...] = ()
+SELECTED_31 = SELECTED_27 + MOUTH_4
 SELECTED_49: tuple[int, ...] = ()
 
 SELECTED_27_NOTE = (
@@ -87,6 +93,25 @@ SELECTED_27_NOTE = (
     "10 left-hand nodes and 10 right-hand nodes chosen as finger mid/tip landmarks. "
     "This mapping should be verified with visualization before treating it as canonical."
 )
+SELECTED_31_NOTE = (
+    "Default selected_31 mapping: selected_27 plus 4 mouth landmarks "
+    "(mouth_left_corner, mouth_right_corner, upper_lip, lower_lip) using the "
+    "default COCO-WholeBody face-landmark indexing. This mapping should be "
+    "verified with visualization before treating it as canonical."
+)
+KEYPOINT_NAME_OVERRIDES = {
+    71: "mouth_left_corner",
+    77: "mouth_right_corner",
+    74: "upper_lip",
+    80: "lower_lip",
+}
+KEYPOINT_SET_COMPONENT_INDICES = {
+    "selected_27": {},
+    "selected_31": {
+        "mouth": MOUTH_4,
+    },
+    "selected_49": {},
+}
 
 KEYPOINT_SET_SIZES = {
     "selected_27": 27,
@@ -102,7 +127,7 @@ KEYPOINT_SET_INDICES = {
 
 KEYPOINT_SET_NOTES = {
     "selected_27": SELECTED_27_NOTE,
-    "selected_31": "selected_31 mapping is not implemented yet.",
+    "selected_31": SELECTED_31_NOTE,
     "selected_49": "selected_49 mapping is not implemented yet.",
 }
 
@@ -128,7 +153,9 @@ def validate_keypoint_indices(
 
 
 validate_keypoint_indices(SELECTED_27)
+validate_keypoint_indices(SELECTED_31)
 assert len(SELECTED_27) == 27
+assert len(SELECTED_31) == 31
 
 
 def get_keypoint_region_indices(region_name: str) -> tuple[int, ...]:
@@ -156,7 +183,10 @@ def get_keypoint_names(indices: Sequence[int]) -> tuple[str, ...]:
     """Resolve source-layout keypoint names for one reduced mapping."""
 
     validated = validate_keypoint_indices(indices)
-    return tuple(WHOLEBODY_133_KEYPOINT_NAMES[index] for index in validated)
+    return tuple(
+        KEYPOINT_NAME_OVERRIDES.get(index, WHOLEBODY_133_KEYPOINT_NAMES[index])
+        for index in validated
+    )
 
 
 def get_keypoint_set_names(keypoint_set: str) -> tuple[str, ...]:
@@ -169,6 +199,20 @@ def get_keypoint_set_note(keypoint_set: str) -> str:
     """Return the documentation note for a reduced keypoint mapping."""
 
     return KEYPOINT_SET_NOTES.get(keypoint_set, "")
+
+
+def get_keypoint_component_indices(
+    keypoint_set: str,
+    component_name: str,
+) -> tuple[int, ...]:
+    """Return auxiliary component indices, such as mouth landmarks, for one set."""
+
+    try:
+        components = KEYPOINT_SET_COMPONENT_INDICES[keypoint_set]
+    except KeyError as exc:
+        raise KeyError(f"Unknown keypoint set: {keypoint_set}") from exc
+    indices = components.get(component_name, ())
+    return validate_keypoint_indices(indices) if indices else ()
 
 
 def validate_keypoints_shape(

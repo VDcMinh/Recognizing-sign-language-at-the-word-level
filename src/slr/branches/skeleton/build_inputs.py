@@ -22,7 +22,9 @@ from slr.pose.pose_normalization import (
 )
 from slr.pose.pose_schema import (
     WHOLEBODY_133_LAYOUT,
+    get_keypoint_component_indices,
     get_keypoint_indices,
+    get_keypoint_names,
     get_keypoint_set_names,
     get_keypoint_set_note,
     validate_keypoints_shape,
@@ -177,6 +179,8 @@ def load_config(config_path: Path, subset_override: str | None = None) -> dict[s
     keypoint_set = str(keypoints_cfg.get("keypoint_set", "selected_27"))
     selected_indices = get_keypoint_indices(keypoint_set)
     selected_names = get_keypoint_set_names(keypoint_set)
+    mouth_indices = get_keypoint_component_indices(keypoint_set, "mouth")
+    mouth_names = get_keypoint_names(mouth_indices) if mouth_indices else ()
     num_selected_keypoints = int(keypoints_cfg.get("num_selected_keypoints", len(selected_indices)))
     if num_selected_keypoints != len(selected_indices):
         raise ValueError(
@@ -199,6 +203,8 @@ def load_config(config_path: Path, subset_override: str | None = None) -> dict[s
     if num_channels != len(channels):
         raise ValueError("graph_tensor.num_channels must match the number of configured channels.")
     expected_shape = list(graph_tensor_cfg.get("expected_shape", [num_channels, 150, len(selected_indices), 1]))
+    if len(expected_shape) != 4:
+        raise ValueError("graph_tensor.expected_shape must have 4 values: [C, T, V, M].")
 
     resolved = {
         "config_path": config_path,
@@ -234,6 +240,8 @@ def load_config(config_path: Path, subset_override: str | None = None) -> dict[s
             "num_selected_keypoints": num_selected_keypoints,
             "selected_indices": selected_indices,
             "selected_names": selected_names,
+            "mouth_indices": mouth_indices,
+            "mouth_names": mouth_names,
             "mapping_note": get_keypoint_set_note(keypoint_set),
         },
         "normalization": {
@@ -276,10 +284,21 @@ def load_config(config_path: Path, subset_override: str | None = None) -> dict[s
 
     if resolved["keypoints"]["source_layout"] != WHOLEBODY_133_LAYOUT:
         raise ValueError("This preprocessing step currently supports source_layout=wholebody_133 only.")
-    if resolved["keypoints"]["keypoint_set"] != "selected_27":
-        raise ValueError("This task currently supports keypoint_set=selected_27 only.")
+    if resolved["keypoints"]["keypoint_set"] not in {"selected_27", "selected_31"}:
+        raise ValueError("This preprocessing step currently supports keypoint_set=selected_27 or selected_31 only.")
     if resolved["graph_tensor"]["layout"] != "CTVM":
         raise ValueError("This preprocessing step requires graph_tensor.layout=CTVM.")
+    expected_shape_tuple = tuple(int(value) for value in resolved["graph_tensor"]["expected_shape"])
+    target_shape = (
+        resolved["graph_tensor"]["num_channels"],
+        resolved["sequence"]["target_num_frames"],
+        resolved["keypoints"]["num_selected_keypoints"],
+        resolved["graph_tensor"]["num_persons"],
+    )
+    if expected_shape_tuple != target_shape:
+        raise ValueError(
+            f"graph_tensor.expected_shape={expected_shape_tuple} does not match the resolved target shape {target_shape}."
+        )
     return resolved
 
 
@@ -781,6 +800,8 @@ def build_report(
     normalization_cfg = config["normalization"]
     sequence_cfg = config["sequence"]
     graph_cfg = config["graph_tensor"]
+    mouth_indices = keypoint_cfg.get("mouth_indices", ())
+    mouth_names = keypoint_cfg.get("mouth_names", ())
 
     status_counts = combined_manifest["status"].value_counts().to_dict()
     total_selected = int(sum(stats["selected_outputs"] for stats in split_stats))
@@ -799,6 +820,8 @@ def build_report(
         f"- source_layout: `{keypoint_cfg['source_layout']}`",
         f"- selected indices: `{_json_array_text(keypoint_cfg['selected_indices'])}`",
         f"- selected names: `{_json_array_text(keypoint_cfg['selected_names'])}`",
+        f"- mouth indices: `{_json_array_text(mouth_indices)}`",
+        f"- mouth names: `{_json_array_text(mouth_names)}`",
         f"- selected mapping note: {keypoint_cfg['mapping_note']}",
         f"- total samples: `{len(combined_manifest)}`",
         f"- status=ok count: `{int((combined_manifest['status'] == 'ok').sum())}`",
@@ -876,7 +899,7 @@ def run(
     limit: int | None = None,
     dry_run: bool = False,
 ) -> int:
-    """Run selected_27 skeleton input generation for one subset."""
+    """Run skeleton input generation for one subset and reduced keypoint set."""
 
     config = load_config(config_path, subset_override=subset)
     paths = resolve_paths(config)
@@ -898,6 +921,10 @@ def run(
     LOGGER.info("Limit per split: %s", limit)
     LOGGER.info("Dry run: %s", dry_run)
     LOGGER.info("Selected indices: %s", _json_array_text(config["keypoints"]["selected_indices"]))
+    if config["keypoints"]["mouth_indices"]:
+        LOGGER.info("Mouth indices: %s", _json_array_text(config["keypoints"]["mouth_indices"]))
+        LOGGER.info("Mouth names: %s", _json_array_text(config["keypoints"]["mouth_names"]))
+    LOGGER.info("Expected graph tensor shape: %s", tuple(config["graph_tensor"]["expected_shape"]))
 
     if not dry_run:
         ensure_dir(paths["selected_subset_root"])
@@ -912,6 +939,10 @@ def run(
         LOGGER.info("Loading pose manifest for split=%s: %s", split, _stringify_path(manifest_path))
         manifests_by_split[split] = load_pose_manifest(manifest_path, split)
 
+    LOGGER.info(
+        "Computing confidence scale from split=%s.",
+        config["normalization"]["confidence"]["fit_on_split"],
+    )
     confidence_scale_info = compute_confidence_scale_from_train(
         manifests_by_split[config["normalization"]["confidence"]["fit_on_split"]],
         config=config,
