@@ -1,0 +1,68 @@
+dataset:
+  name: WLASL
+  root: data/datasets/WLASL
+  subset: nslt100
+
+input:
+  pose_root: data/datasets/WLASL/pose/rtmw_l
+  pose_manifest_root: data/datasets/WLASL/pose/rtmw_l/manifests
+  splits:
+    - train
+    - val
+    - test
+  manifest_filenames:
+    train: nslt100_train.csv
+    val: nslt100_val.csv
+    test: nslt100_test.csv
+  require_pose_status_ok: true
+
+output:
+  root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l
+  selected_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/selected_27
+  normalized_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/normalized/selected_27
+  graph_tensor_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/graph_tensors/selected_27
+  manifests_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests
+  reports_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/reports
+  logs_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/logs
+
+keypoints:
+  source_layout: wholebody_133
+  keypoint_set: selected_27
+  num_source_keypoints: 133
+  num_selected_keypoints: 27
+
+normalization:
+  image_width: 288
+  image_height: 384
+  clip_xy_to_image: true
+  xy_range: [-1, 1]
+  confidence:
+    enabled: true
+    method: percentile
+    percentile: 95
+    fit_on_split: train
+    clip_range: [0, 1]
+    save_scale_to_report: true
+
+sequence:
+  target_num_frames: 150
+  short_sequence_strategy: repeat
+  long_sequence_strategy: head
+  preserve_original_num_frames: true
+
+graph_tensor:
+  channels:
+    - x
+    - y
+    - confidence
+  num_channels: 3
+  num_persons: 1
+  layout: CTVM
+  expected_shape: [3, 150, 27, 1]
+
+options:
+  overwrite: true
+  save_selected: true
+  save_normalized: true
+  save_graph_tensor: true
+  fail_on_missing_pose_file: false
