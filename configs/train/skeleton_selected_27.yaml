@@ -1,0 +1,28 @@
+dataset:
+  name: WLASL
+  subset: nslt100
+  data_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l
+  keypoint_set: selected_27
+  num_classes: 100
+  num_channels: 3
+  target_num_frames: 150
+  num_persons: 1
+  expected_shape: [3, 150, 27, 1]
+  manifests:
+    train: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_27_train.csv
+    val: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_27_val.csv
+    test: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_27_test.csv
+  return_metadata: true
+  strict_shape_check: true
+
+dataloader:
+  batch_size: 16
+  num_workers: 2
+  pin_memory: true
+  shuffle_train: true
+
+graph:
+  layout: selected_27
+  strategy: spatial
+  add_self_links: true
+  normalize_adjacency: true
