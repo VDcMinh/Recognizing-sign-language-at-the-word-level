@@ -105,6 +105,7 @@ reports/figures/generated/
 # Kaggle packaging outputs
 # ============================================================
 kaggle_bundle/
+hf_bundle/
 *.zip
 
 
