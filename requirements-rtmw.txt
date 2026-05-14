@@ -13,5 +13,6 @@ xtcocotools==1.14.3
 munkres
 json-tricks
 rich
+wandb
 
 

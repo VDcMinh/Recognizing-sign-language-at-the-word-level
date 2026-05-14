@@ -1,0 +1,25 @@
+{
+  "run_name": "smoke-sel27",
+  "keypoint_set": "selected_27",
+  "model_name": "simple_stgcn",
+  "output_dir": "outputs/skeleton/smoke-sel27",
+  "best_checkpoint": "outputs/skeleton/smoke-sel27/checkpoints/best.pt",
+  "last_checkpoint": "outputs/skeleton/smoke-sel27/checkpoints/last.pt",
+  "config_path": "configs/train/skeleton_selected_27_baseline.yaml",
+  "dataset": {
+    "subset": "nslt100",
+    "num_classes": 100,
+    "expected_shape": [
+      3,
+      150,
+      27,
+      1
+    ],
+    "num_samples": {
+      "train": 32,
+      "val": 16,
+      "test": 16
+    }
+  },
+  "wandb_run_url": null
+}

@@ -1,4 +1,4 @@
-from slr.training.train import main
+from slr.branches.skeleton.train import main
 
 
 if __name__ == "__main__":

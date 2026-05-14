@@ -1,0 +1,72 @@
+experiment:
+  name: smoke-sel31
+  seed: 42
+  output_root: outputs/skeleton
+  monitor_metric: val/top1
+  monitor_mode: max
+  save_every_epoch: false
+  output_dir: outputs/skeleton/smoke-sel31
+dataset:
+  name: WLASL
+  subset: nslt100
+  data_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l
+  keypoint_set: selected_31
+  num_classes: 100
+  expected_shape:
+  - 3
+  - 150
+  - 31
+  - 1
+  manifests:
+    train: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_31_train.csv
+    val: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_31_val.csv
+    test: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_31_test.csv
+  return_metadata: true
+  strict_shape_check: true
+dataloader:
+  batch_size: 16
+  num_workers: 0
+  pin_memory: true
+  shuffle_train: true
+graph:
+  layout: selected_31
+  strategy: spatial
+  add_self_links: true
+  normalize_adjacency: true
+model:
+  name: simple_stgcn
+  in_channels: 3
+  num_nodes: 31
+  num_classes: 100
+  hidden_channels: 64
+  dropout: 0.5
+train:
+  epochs: 1
+  device: auto
+  optimizer: adamw
+  learning_rate: 0.001
+  weight_decay: 0.0005
+  loss: cross_entropy
+  grad_clip_norm: null
+  amp: false
+scheduler:
+  enabled: false
+  name: cosine
+  min_lr: 1.0e-06
+logging:
+  use_wandb: false
+  entity_env: WANDB_ENTITY
+  project: wlasl-skeleton
+  run_name: smoke-sel31
+  tags:
+  - nslt100
+  - selected_31
+  - baseline
+  - cross_entropy
+  log_model: true
+config_path: configs/train/skeleton_selected_31_baseline.yaml
+project_root: F:/DMV/Recognizing-sign-language-at-the-word-level
+runtime:
+  limit_train: 32
+  limit_val: 16
+  limit_test: 16
