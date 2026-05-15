@@ -1,0 +1,11 @@
+{
+  "best_epoch": 1,
+  "best_val_top1": 0.0,
+  "best_val_top5": 0.375,
+  "best_val_loss": 4.388170003890991,
+  "test_loss": 4.499626874923706,
+  "test_top1": 0.0625,
+  "test_top5": 0.1875,
+  "final_train_loss": 3.4182717204093933,
+  "final_val_loss": 4.388170003890991
+}

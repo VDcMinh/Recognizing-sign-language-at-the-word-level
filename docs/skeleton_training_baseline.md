@@ -9,6 +9,10 @@ This baseline trains a simple skeleton graph model on precomputed WLASL graph te
 
 The current baseline is intended to validate the end-to-end training stack before replacing the model with ST-GCN++ or CTR-GCN.
 
+For the repo-local ST-GCN++ integration notes and commands, see:
+
+- `docs/skeleton_stgcnpp_integration.md`
+
 ## Data Requirement
 
 Train-ready skeleton data must already exist under:
@@ -151,6 +155,7 @@ when `experiment.output_dir` exists in the resolved config.
 
 ## Next Steps
 
-- Replace `SimpleSTGCN` with ST-GCN++ or CTR-GCN
+- Train the new `stgcnpp` configs on `selected_27` and `selected_31`
 - Add standard label smoothing
 - Add LanguageLS
+- Add CTR-GCN

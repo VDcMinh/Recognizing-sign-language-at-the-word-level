@@ -1,0 +1,25 @@
+{
+  "run_name": "smoke-sel31-stgcnpp",
+  "keypoint_set": "selected_31",
+  "model_name": "stgcnpp",
+  "output_dir": "outputs/skeleton/smoke-sel31-stgcnpp",
+  "best_checkpoint": "outputs/skeleton/smoke-sel31-stgcnpp/checkpoints/best.pt",
+  "last_checkpoint": "outputs/skeleton/smoke-sel31-stgcnpp/checkpoints/last.pt",
+  "config_path": "configs/train/skeleton_selected_31_stgcnpp.yaml",
+  "dataset": {
+    "subset": "nslt100",
+    "num_classes": 100,
+    "expected_shape": [
+      3,
+      150,
+      31,
+      1
+    ],
+    "num_samples": {
+      "train": 32,
+      "val": 16,
+      "test": 16
+    }
+  },
+  "wandb_run_url": null
+}

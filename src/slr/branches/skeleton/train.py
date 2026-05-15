@@ -166,6 +166,9 @@ def _normalize_training_config(config: dict[str, Any], *, config_path: Path) -> 
     model.setdefault("num_nodes", int(dataset.get("expected_shape", [3, 150, 27, 1])[2]))
     model.setdefault("num_classes", int(dataset.get("num_classes", 100)))
     model.setdefault("hidden_channels", 64)
+    model.setdefault("base_channels", 64)
+    model.setdefault("stage_channels", [64, 64, 64, 128, 128, 256])
+    model.setdefault("temporal_strides", [1, 1, 1, 2, 1, 2])
     model.setdefault("dropout", 0.5)
 
     train_cfg.setdefault("epochs", 30)
