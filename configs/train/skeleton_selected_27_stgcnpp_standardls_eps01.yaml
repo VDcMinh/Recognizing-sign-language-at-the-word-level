@@ -1,0 +1,74 @@
+experiment:
+  name: sel27-stgcnpp-standardls-eps01-lr005-bs16-wd001-ep180-v1
+  seed: 42
+  output_root: outputs/skeleton
+  monitor_metric: val/top1
+  monitor_mode: max
+  save_every_epoch: false
+
+dataset:
+  name: WLASL
+  subset: nslt100
+  data_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l
+  keypoint_set: selected_27
+  num_classes: 100
+  expected_shape: [3, 150, 27, 1]
+  manifests:
+    train: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_27_train.csv
+    val: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_27_val.csv
+    test: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_27_test.csv
+  return_metadata: true
+  strict_shape_check: true
+
+dataloader:
+  batch_size: 16
+  num_workers: 2
+  pin_memory: true
+  shuffle_train: true
+
+graph:
+  layout: selected_27
+  strategy: spatial
+  add_self_links: true
+  normalize_adjacency: true
+
+model:
+  name: stgcnpp
+  in_channels: 3
+  num_nodes: 27
+  num_classes: 100
+  base_channels: 64
+  dropout: 0.5
+
+train:
+  epochs: 180
+  device: auto
+  optimizer: sgd
+  learning_rate: 0.05
+  momentum: 0.9
+  weight_decay: 0.001
+  loss: standard_label_smoothing
+  grad_clip_norm: null
+  amp: false
+
+label_smoothing:
+  type: standard
+  epsilon: 0.1
+
+scheduler:
+  enabled: true
+  name: cosine
+  min_lr: 0.000001
+
+logging:
+  use_wandb: true
+  entity_env: WANDB_ENTITY
+  project: wlasl-skeleton
+  run_name: sel27-stgcnpp-standardls-eps01-lr005-bs16-wd001-ep180-v1
+  tags:
+    - nslt100
+    - selected_27
+    - stgcnpp
+    - standard_label_smoothing
+    - eps01
+  log_model: true
