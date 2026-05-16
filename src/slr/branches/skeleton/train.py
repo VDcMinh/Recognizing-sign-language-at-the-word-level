@@ -17,7 +17,11 @@ from slr.branches.skeleton.dataset import SkeletonGraphDataset, skeleton_collate
 from slr.branches.skeleton.graph import SkeletonGraph
 from slr.branches.skeleton.models import build_skeleton_model
 from slr.training.checkpointing import load_checkpoint, save_checkpoint
-from slr.training.losses import build_loss
+from slr.training.losses import (
+    build_loss_from_config,
+    get_label_smoothing_epsilon,
+    get_loss_name,
+)
 from slr.training.metrics import AverageMeter, accuracy_topk
 from slr.training.optim import build_optimizer, build_scheduler
 from slr.training.seed import set_seed
@@ -119,6 +123,25 @@ def _as_float_or_none(value: Any) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _attach_loss_metadata(config: dict[str, Any]) -> dict[str, Any]:
+    """Attach resolved loss metadata to the runtime section."""
+
+    runtime_cfg = config.setdefault("runtime", {})
+    runtime_cfg["loss_type"] = get_loss_name(config)
+    runtime_cfg["label_smoothing_epsilon"] = float(get_label_smoothing_epsilon(config))
+    return config
+
+
+def _format_loss_log(config: dict[str, Any]) -> str:
+    """Render one short startup log line for the configured loss."""
+
+    loss_type = str(config["runtime"]["loss_type"])
+    epsilon = float(config["runtime"]["label_smoothing_epsilon"])
+    if loss_type == "standard_label_smoothing":
+        return f"Loss: {loss_type} epsilon={epsilon:g}"
+    return f"Loss: {loss_type}"
 
 
 def _normalize_training_config(config: dict[str, Any], *, config_path: Path) -> dict[str, Any]:
@@ -252,6 +275,7 @@ def resolve_training_config(config_path: Path, args: argparse.Namespace) -> dict
     config = read_yaml(config_path)
     normalized = _normalize_training_config(config, config_path=config_path)
     resolved = apply_cli_overrides(normalized, args)
+    resolved = _attach_loss_metadata(resolved)
 
     expected_shape = tuple(int(value) for value in resolved["dataset"]["expected_shape"])
     if len(expected_shape) != 4:
@@ -503,6 +527,7 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
     expected_shape = tuple(int(value) for value in resolved_config["dataset"]["expected_shape"])
 
     logger.info("Resolved run_name=%s device=%s", run_name, device)
+    logger.info(_format_loss_log(resolved_config))
     set_seed(int(resolved_config["experiment"]["seed"]))
 
     datasets = build_skeleton_datasets(resolved_config)
@@ -535,7 +560,7 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
     ensure_dir(output_paths["checkpoints_dir"])
     file_logger = logger
 
-    criterion = build_loss(str(resolved_config["train"]["loss"]), resolved_config.get("loss"))
+    criterion = build_loss_from_config(resolved_config)
     optimizer = build_optimizer(model.parameters(), resolved_config["train"])
     scheduler = build_scheduler(
         optimizer,
@@ -710,6 +735,10 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
             )
 
         metrics_summary = {
+            "loss_type": str(resolved_config["runtime"]["loss_type"]),
+            "label_smoothing_epsilon": float(
+                resolved_config["runtime"]["label_smoothing_epsilon"]
+            ),
             "best_epoch": int(best_epoch),
             "best_val_top1": float(best_row["val_top1"]) if best_row is not None else 0.0,
             "best_val_top5": float(best_row["val_top5"]) if best_row is not None else 0.0,
@@ -733,6 +762,10 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
             wandb_run.summary["test_top10"] = metrics_summary["test_top10"]
         summary = {
             "run_name": run_name,
+            "loss_type": str(resolved_config["runtime"]["loss_type"]),
+            "label_smoothing_epsilon": float(
+                resolved_config["runtime"]["label_smoothing_epsilon"]
+            ),
             "keypoint_set": str(resolved_config["dataset"]["keypoint_set"]),
             "model_name": str(resolved_config["model"]["name"]),
             "output_dir": str(output_paths["output_dir"].as_posix()),
@@ -780,6 +813,7 @@ def run_evaluation(
         config["dataloader"]["batch_size"] = int(batch_size)
     if device_name is not None:
         config["train"]["device"] = str(device_name)
+    config = _attach_loss_metadata(config)
 
     logger = setup_logger("slr.branches.skeleton.evaluate")
     device = select_device(str(config["train"]["device"]))
@@ -792,7 +826,7 @@ def run_evaluation(
         batch_size_override=batch_size,
     )
     _, model = build_graph_and_model(config, device=device)
-    criterion = build_loss(str(config["train"]["loss"]), config.get("loss"))
+    criterion = build_loss_from_config(config)
     payload = load_checkpoint(checkpoint_path, model, map_location=device)
     metrics = run_one_epoch_with_shape(
         expected_shape=expected_shape,
