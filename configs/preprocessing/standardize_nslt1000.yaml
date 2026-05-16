@@ -1,0 +1,45 @@
+dataset:
+  name: WLASL
+  root: data/datasets/WLASL
+
+input:
+  subset: nslt1000
+  splits:
+    - train
+    - val
+    - test
+  manifest_root: data/datasets/WLASL/index/subsets_available
+  manifest_filenames:
+    train: train.csv
+    val: val.csv
+    test: test.csv
+
+output:
+  root: data/datasets/WLASL/standardized
+  frames_root: data/datasets/WLASL/standardized/frames
+  videos_root: data/datasets/WLASL/standardized/videos
+  manifests_root: data/datasets/WLASL/standardized/manifests
+  reports_root: data/datasets/WLASL/standardized/reports
+  logs_root: data/datasets/WLASL/standardized/logs
+
+standardization:
+  output_size:
+    width: 288
+    height: 384
+  keep_aspect_ratio: true
+  letterbox: true
+  letterbox_value: 0
+  crop_with_bbox: true
+  bbox_margin:
+    left: 0.15
+    right: 0.15
+    top: 0.10
+    bottom: 0.15
+  fallback_to_full_frame_if_bbox_invalid: true
+  frame_index_base: 0
+  save_frames: true
+  save_video: false
+  frame_format: jpg
+  jpg_quality: 95
+  video_codec: mp4v
+  overwrite: true
