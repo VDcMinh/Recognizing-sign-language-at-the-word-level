@@ -31,7 +31,7 @@ from slr.utils.io import ensure_dir, read_yaml, write_dataframe_csv, write_json,
 from slr.utils.logging import setup_logger
 
 
-DEFAULT_TOPK = (1, 5)
+DEFAULT_TOPK = (1, 5, 10)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -389,8 +389,7 @@ def run_one_epoch_with_shape(
     model.train(is_train)
 
     loss_meter = AverageMeter("loss")
-    top1_meter = AverageMeter("top1")
-    top5_meter = AverageMeter("top5")
+    topk_meters = {f"top{k}": AverageMeter(f"top{k}") for k in DEFAULT_TOPK}
 
     for batch in loader:
         data = batch["data"]
@@ -424,14 +423,15 @@ def run_one_epoch_with_shape(
 
         metrics = accuracy_topk(logits.detach(), labels.detach(), topk=DEFAULT_TOPK)
         loss_meter.update(float(loss.item()), n=batch_size)
-        top1_meter.update(float(metrics["top1"]), n=batch_size)
-        top5_meter.update(float(metrics["top5"]), n=batch_size)
+        for key, meter in topk_meters.items():
+            meter.update(float(metrics[key]), n=batch_size)
 
-    return {
+    epoch_metrics = {
         "loss": loss_meter.avg,
-        "top1": top1_meter.avg,
-        "top5": top5_meter.avg,
     }
+    for key, meter in topk_meters.items():
+        epoch_metrics[key] = meter.avg
+    return epoch_metrics
 
 
 def _is_improved(current: float, best: float | None, *, mode: str) -> bool:
@@ -477,13 +477,18 @@ def _write_training_outputs(
 
 def _log_epoch_summary(logger, epoch: int, total_epochs: int, metrics: dict[str, float]) -> None:
     logger.info(
-        "Epoch %s/%s | train_loss=%.4f train_top1=%.4f val_loss=%.4f val_top1=%.4f",
+        "Epoch %s/%s | train_loss=%.4f train_top1=%.4f train_top5=%.4f train_top10=%.4f "
+        "val_loss=%.4f val_top1=%.4f val_top5=%.4f val_top10=%.4f",
         epoch,
         total_epochs,
         metrics["train/loss"],
         metrics["train/top1"],
+        metrics["train/top5"],
+        metrics["train/top10"],
         metrics["val/loss"],
         metrics["val/top1"],
+        metrics["val/top5"],
+        metrics["val/top10"],
     )
 
 
@@ -594,9 +599,11 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
                 "train/loss": float(train_metrics["loss"]),
                 "train/top1": float(train_metrics["top1"]),
                 "train/top5": float(train_metrics["top5"]),
+                "train/top10": float(train_metrics["top10"]),
                 "val/loss": float(val_metrics["loss"]),
                 "val/top1": float(val_metrics["top1"]),
                 "val/top5": float(val_metrics["top5"]),
+                "val/top10": float(val_metrics["top10"]),
             }
             row = {
                 "epoch": epoch,
@@ -604,9 +611,11 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
                 "train_loss": flat_metrics["train/loss"],
                 "train_top1": flat_metrics["train/top1"],
                 "train_top5": flat_metrics["train/top5"],
+                "train_top10": flat_metrics["train/top10"],
                 "val_loss": flat_metrics["val/loss"],
                 "val_top1": flat_metrics["val/top1"],
                 "val_top5": flat_metrics["val/top5"],
+                "val_top10": flat_metrics["val/top10"],
             }
             epoch_records.append(row)
             _log_epoch_summary(file_logger, epoch, total_epochs, flat_metrics)
@@ -687,6 +696,7 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
             "test/loss": float(test_metrics["loss"]),
             "test/top1": float(test_metrics["top1"]),
             "test/top5": float(test_metrics["top5"]),
+            "test/top10": float(test_metrics["top10"]),
         }
         log_wandb_metrics(wandb_run, final_test_payload, step=best_epoch)
 
@@ -703,13 +713,24 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
             "best_epoch": int(best_epoch),
             "best_val_top1": float(best_row["val_top1"]) if best_row is not None else 0.0,
             "best_val_top5": float(best_row["val_top5"]) if best_row is not None else 0.0,
+            "best_val_top10": float(best_row["val_top10"]) if best_row is not None else 0.0,
             "best_val_loss": float(best_row["val_loss"]) if best_row is not None else 0.0,
             "test_loss": float(test_metrics["loss"]),
             "test_top1": float(test_metrics["top1"]),
             "test_top5": float(test_metrics["top5"]),
+            "test_top10": float(test_metrics["top10"]),
             "final_train_loss": float(epoch_records[-1]["train_loss"]),
             "final_val_loss": float(epoch_records[-1]["val_loss"]),
         }
+        if wandb_run is not None:
+            wandb_run.summary["best_epoch"] = metrics_summary["best_epoch"]
+            wandb_run.summary["best_val_top1"] = metrics_summary["best_val_top1"]
+            wandb_run.summary["best_val_top5"] = metrics_summary["best_val_top5"]
+            wandb_run.summary["best_val_top10"] = metrics_summary["best_val_top10"]
+            wandb_run.summary["test_loss"] = metrics_summary["test_loss"]
+            wandb_run.summary["test_top1"] = metrics_summary["test_top1"]
+            wandb_run.summary["test_top5"] = metrics_summary["test_top5"]
+            wandb_run.summary["test_top10"] = metrics_summary["test_top10"]
         summary = {
             "run_name": run_name,
             "keypoint_set": str(resolved_config["dataset"]["keypoint_set"]),
@@ -789,13 +810,15 @@ def run_evaluation(
         "loss": float(metrics["loss"]),
         "top1": float(metrics["top1"]),
         "top5": float(metrics["top5"]),
+        "top10": float(metrics["top10"]),
     }
     logger.info(
-        "Evaluation split=%s loss=%.4f top1=%.4f top5=%.4f",
+        "Evaluation split=%s loss=%.4f top1=%.4f top5=%.4f top10=%.4f",
         split,
         result["loss"],
         result["top1"],
         result["top5"],
+        result["top10"],
     )
 
     output_dir_text = raw_config.get("experiment", {}).get("output_dir")
