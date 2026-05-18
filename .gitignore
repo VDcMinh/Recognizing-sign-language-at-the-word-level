@@ -105,9 +105,10 @@ reports/figures/generated/
 # Kaggle packaging outputs
 # ============================================================
 kaggle_bundle/
+kaggle_sub300_bundle/
 hf_bundle/
 *.zip
-
+hf_sub300_bundle/
 
 # ============================================================
 # OS / editor noise
@@ -131,3 +132,4 @@ data/datasets/WLASL/index/**/*.log
 # Keep placeholders
 !data/datasets/WLASL/index/**/.gitkeep
 
+outputs/
