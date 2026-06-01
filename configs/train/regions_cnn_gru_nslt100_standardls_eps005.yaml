@@ -1,0 +1,69 @@
+experiment:
+  name: regions_cnn_gru_nslt100_standardls_eps005
+  output_dir: outputs/regions/regions_cnn_gru_nslt100_standardls_eps005
+  seed: 42
+
+dataset:
+  subset: nslt100
+  num_classes: 100
+  data_root: data/datasets/WLASL/branch_inputs/regions/rtmw_l
+  manifests:
+    train: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt100_train.csv
+    val: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt100_val.csv
+    test: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt100_test.csv
+  expected_shape: [3, 3, 64, 112, 112]
+  region_order: ["left_hand", "right_hand", "face"]
+  return_metadata: true
+  strict_shape_check: true
+
+model:
+  name: region_cnn_gru
+  num_classes: 100
+  num_regions: 3
+  in_channels: 3
+  clip_len: 64
+  crop_size: 112
+  cnn_feature_dim: 256
+  gru_hidden_size: 256
+  gru_num_layers: 1
+  bidirectional: true
+  dropout: 0.3
+  fusion: concat
+  use_valid_mask: true
+
+train:
+  epochs: 30
+  batch_size: 8
+  num_workers: 2
+  pin_memory: true
+  shuffle_train: true
+  device: auto
+  loss: standard_label_smoothing
+  amp: false
+  grad_clip_norm: null
+  save_best_metric: val_top1
+  optimizer:
+    name: adamw
+    lr: 0.0003
+    weight_decay: 0.0001
+  scheduler:
+    enabled: true
+    name: cosine
+    min_lr: 0.000001
+
+label_smoothing:
+  type: standard
+  epsilon: 0.05
+
+logging:
+  use_wandb: false
+  entity_env: WANDB_ENTITY
+  project: wlasl-regions
+  run_name: regions_cnn_gru_nslt100_standardls_eps005
+  tags:
+    - nslt100
+    - regions
+    - region_cnn_gru
+    - standard_label_smoothing
+    - eps005
+  log_model: true
