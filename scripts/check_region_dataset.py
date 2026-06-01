@@ -29,6 +29,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to one region manifest CSV file.",
     )
     parser.add_argument(
+        "--data-root",
+        type=Path,
+        default=None,
+        help="Optional dataset root used to resolve relative tensor paths.",
+    )
+    parser.add_argument(
         "--limit",
         type=int,
         default=4,
@@ -76,6 +82,7 @@ def main() -> int:
 
     dataset = RegionClipDataset(
         manifest_path=args.manifest,
+        data_root=args.data_root,
         limit=args.limit,
         strict_shape_check=True,
         return_metadata=True,
@@ -83,6 +90,7 @@ def main() -> int:
 
     print("== Dataset ==")
     print(f"manifest path: {args.manifest}")
+    print(f"data root: {args.data_root or '<none>'}")
     print(f"total samples: {len(manifest)}")
     print(f"ok samples: {len(ok_manifest)}")
     print(f"error samples: {len(error_manifest)}")

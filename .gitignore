@@ -110,6 +110,7 @@ hf_bundle/
 *.zip
 hf_sub300_bundle/
 kaggle_nslt1000_remaining_bundle/
+hf_regions_nslt100_bundle/
 # ============================================================
 # OS / editor noise
 # ============================================================
