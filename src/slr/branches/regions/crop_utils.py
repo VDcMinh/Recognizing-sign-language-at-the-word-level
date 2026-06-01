@@ -22,6 +22,12 @@ class RegionBBoxResult:
     source: str
 
 
+def _bbox_side_length(box: BoundingBox) -> float:
+    """Return the larger side length for one bbox."""
+
+    return max(float(box.x2 - box.x1), float(box.y2 - box.y1))
+
+
 def _validate_frame_keypoints(frame_keypoints: np.ndarray) -> np.ndarray:
     """Validate and normalize one wholebody_133 frame."""
 
@@ -62,6 +68,8 @@ def bbox_from_points(
     conf_thr: float,
     margin: float,
     min_points: int,
+    min_bbox_size_px: float | None = None,
+    max_bbox_size_ratio: float | None = None,
 ) -> BoundingBox | None:
     """Build a clipped square bbox from visible points."""
 
@@ -84,7 +92,17 @@ def bbox_from_points(
         y2=float(max_xy[1]),
     )
     clipped = clip_bbox(square_bbox(base_box, scale=float(margin)), width=image_w, height=image_h)
-    return clipped if is_valid_bbox(clipped) else None
+    if not is_valid_bbox(clipped):
+        return None
+
+    side_length = _bbox_side_length(clipped)
+    if min_bbox_size_px is not None and side_length < float(min_bbox_size_px):
+        return None
+    if max_bbox_size_ratio is not None:
+        max_allowed_side = float(max_bbox_size_ratio) * float(min(image_w, image_h))
+        if side_length > max_allowed_side:
+            return None
+    return clipped
 
 
 def face_bbox_from_wholebody133(
@@ -96,6 +114,8 @@ def face_bbox_from_wholebody133(
     fallback_margin: float,
     min_face_points: int = 8,
     min_anchor_points: int = 2,
+    min_bbox_size_px: float | None = None,
+    max_bbox_size_ratio: float | None = None,
 ) -> RegionBBoxResult:
     """Build a face bbox using face landmarks first and body anchors as fallback."""
 
@@ -111,6 +131,8 @@ def face_bbox_from_wholebody133(
             conf_thr=conf_thr,
             margin=primary_margin,
             min_points=min_face_points,
+            min_bbox_size_px=min_bbox_size_px,
+            max_bbox_size_ratio=max_bbox_size_ratio,
         )
         if face_box is not None:
             return RegionBBoxResult(
@@ -130,6 +152,8 @@ def face_bbox_from_wholebody133(
             conf_thr=conf_thr,
             margin=fallback_margin,
             min_points=min_anchor_points,
+            min_bbox_size_px=min_bbox_size_px,
+            max_bbox_size_ratio=max_bbox_size_ratio,
         )
         if anchor_box is not None:
             return RegionBBoxResult(
@@ -150,6 +174,8 @@ def hand_bbox_from_wholebody133(
     conf_thr: float,
     margin: float,
     min_points: int = 2,
+    min_bbox_size_px: float | None = None,
+    max_bbox_size_ratio: float | None = None,
 ) -> RegionBBoxResult:
     """Build one hand bbox from the wholebody_133 frame."""
 
@@ -173,6 +199,8 @@ def hand_bbox_from_wholebody133(
         conf_thr=conf_thr,
         margin=margin,
         min_points=min_points,
+        min_bbox_size_px=min_bbox_size_px,
+        max_bbox_size_ratio=max_bbox_size_ratio,
     )
     return RegionBBoxResult(
         box=hand_box,

@@ -59,6 +59,7 @@ DEFAULT_CONFIG_PATH = Path("configs/preprocessing/region_crops.yaml")
 ALLOWED_SPLITS = ("train", "val", "test")
 DEFAULT_PREVIEW_FRAME_INDICES = (0, 15, 31, 47, 63)
 DEFAULT_BLACK_CROP_RATIO_THRESHOLD = 0.3
+DEFAULT_PREVIOUS_FALLBACK_RATIO_THRESHOLD = 0.4
 LOGGER = setup_logger(__name__)
 
 
@@ -210,6 +211,24 @@ def _manifest_filename_map(subset: str, manifest_cfg: dict[str, Any]) -> dict[st
     }
 
 
+def _resolve_quality_threshold_map(
+    value: Any,
+    *,
+    defaults: dict[str, float],
+) -> dict[str, float]:
+    """Resolve per-region quality thresholds from one scalar or mapping."""
+
+    if isinstance(value, dict):
+        return {
+            region: float(value.get(region, defaults[region]))
+            for region in REGION_NAMES
+        }
+    if value is None:
+        return {region: float(defaults[region]) for region in REGION_NAMES}
+    scalar = float(value)
+    return {region: scalar for region in REGION_NAMES}
+
+
 def load_config(config_path: Path, subset_override: str | None = None) -> dict[str, Any]:
     """Load and normalize the region preprocessing config."""
 
@@ -219,10 +238,14 @@ def load_config(config_path: Path, subset_override: str | None = None) -> dict[s
     dataset_cfg = config.get("dataset", {})
     input_cfg = config.get("input", {})
     output_cfg = config.get("output", {})
+    outputs_cfg = config.get("outputs", {})
     crop_cfg = config.get("crop", {})
     preview_cfg = config.get("preview", {})
     options_cfg = config.get("options", {})
     quality_cfg = config.get("quality", {})
+    hand_cfg = config.get("hand", {})
+    face_cfg = config.get("face", {})
+    regions_cfg = config.get("regions", {})
 
     subset = subset_override or dataset_cfg.get("subset") or "nslt100"
     dataset_root = _resolve_path(base_dir, dataset_cfg.get("root", "data/datasets/WLASL"))
@@ -258,20 +281,39 @@ def load_config(config_path: Path, subset_override: str | None = None) -> dict[s
     if invalid_splits:
         raise ValueError(f"Unsupported splits in config: {invalid_splits}")
 
-    regions = tuple(output_cfg.get("regions", crop_cfg.get("regions", REGION_NAMES)))
+    regions = tuple(
+        regions_cfg.get(
+            "order",
+            output_cfg.get("regions", crop_cfg.get("regions", REGION_NAMES)),
+        )
+    )
     if tuple(regions) != REGION_NAMES:
         raise ValueError(f"Region order must be {REGION_NAMES}, got {regions}.")
 
-    clip_length = int(crop_cfg.get("clip_length", DEFAULT_CLIP_LEN))
-    crop_size = int(crop_cfg.get("crop_size", DEFAULT_CROP_SIZE))
-    confidence_threshold = float(crop_cfg.get("confidence_threshold", 0.2))
-    face_margin = float(crop_cfg.get("face_margin", 1.45))
-    face_fallback_margin = float(crop_cfg.get("face_fallback_margin", 2.2))
-    hand_margin = float(crop_cfg.get("hand_margin", 1.7))
-    min_face_points = int(crop_cfg.get("min_face_points", 8))
-    min_face_anchor_points = int(crop_cfg.get("min_face_anchor_points", 2))
-    min_hand_points = int(crop_cfg.get("min_hand_points", 2))
+    clip_length = int(
+        config.get("clip_len", crop_cfg.get("clip_length", crop_cfg.get("clip_len", DEFAULT_CLIP_LEN)))
+    )
+    crop_size = int(config.get("crop_size", crop_cfg.get("crop_size", DEFAULT_CROP_SIZE)))
     preview_frame_indices = tuple(int(index) for index in preview_cfg.get("frame_indices", DEFAULT_PREVIEW_FRAME_INDICES))
+    low_valid_ratio_thresholds = _resolve_quality_threshold_map(
+        quality_cfg.get("low_valid_ratio_thresholds", quality_cfg.get("low_valid_ratio_threshold")),
+        defaults={"left_hand": 0.5, "right_hand": 0.5, "face": 0.7},
+    )
+    high_black_crop_ratio_thresholds = _resolve_quality_threshold_map(
+        quality_cfg.get("high_black_crop_ratio_thresholds", quality_cfg.get("high_black_crop_ratio_threshold")),
+        defaults={"left_hand": 0.3, "right_hand": 0.3, "face": 0.2},
+    )
+    high_previous_fallback_ratio_thresholds = _resolve_quality_threshold_map(
+        quality_cfg.get(
+            "high_previous_fallback_ratio_thresholds",
+            quality_cfg.get("high_previous_fallback_ratio_threshold"),
+        ),
+        defaults={
+            "left_hand": DEFAULT_PREVIOUS_FALLBACK_RATIO_THRESHOLD,
+            "right_hand": DEFAULT_PREVIOUS_FALLBACK_RATIO_THRESHOLD,
+            "face": DEFAULT_PREVIOUS_FALLBACK_RATIO_THRESHOLD,
+        },
+    )
 
     resolved = {
         "config_path": config_path,
@@ -314,28 +356,40 @@ def load_config(config_path: Path, subset_override: str | None = None) -> dict[s
         "crop": {
             "clip_length": clip_length,
             "crop_size": crop_size,
-            "confidence_threshold": confidence_threshold,
-            "face_margin": face_margin,
-            "face_fallback_margin": face_fallback_margin,
-            "hand_margin": hand_margin,
-            "min_face_points": min_face_points,
-            "min_face_anchor_points": min_face_anchor_points,
-            "min_hand_points": min_hand_points,
+            "hand": {
+                "conf_threshold": float(hand_cfg.get("conf_threshold", crop_cfg.get("confidence_threshold", 0.2))),
+                "min_points": int(hand_cfg.get("min_points", crop_cfg.get("min_hand_points", 5))),
+                "margin": float(hand_cfg.get("margin", crop_cfg.get("hand_margin", 1.7))),
+                "max_bbox_size_ratio": float(hand_cfg.get("max_bbox_size_ratio", 0.40)),
+                "min_bbox_size_px": float(hand_cfg.get("min_bbox_size_px", 12)),
+                "max_consecutive_fallback": int(hand_cfg.get("max_consecutive_fallback", 3)),
+            },
+            "face": {
+                "conf_threshold": float(face_cfg.get("conf_threshold", crop_cfg.get("confidence_threshold", 0.2))),
+                "min_face_points": int(face_cfg.get("min_face_points", crop_cfg.get("min_face_points", 8))),
+                "min_anchor_points": int(face_cfg.get("min_anchor_points", crop_cfg.get("min_face_anchor_points", 2))),
+                "margin": float(face_cfg.get("margin", crop_cfg.get("face_margin", 1.45))),
+                "fallback_anchor_margin": float(
+                    face_cfg.get("fallback_anchor_margin", crop_cfg.get("face_fallback_margin", 2.2))
+                ),
+                "max_bbox_size_ratio": float(face_cfg.get("max_bbox_size_ratio", 0.70)),
+                "min_bbox_size_px": float(face_cfg.get("min_bbox_size_px", 24)),
+                "max_consecutive_fallback": int(face_cfg.get("max_consecutive_fallback", 5)),
+            },
         },
         "preview": {
             "frame_indices": preview_frame_indices,
         },
         "options": {
             "overwrite": bool(options_cfg.get("overwrite", True)),
-            "save_crops": bool(options_cfg.get("save_crops", True)),
-            "save_tensors": bool(options_cfg.get("save_tensors", True)),
-            "save_previews": bool(options_cfg.get("save_previews", True)),
+            "save_crops": bool(outputs_cfg.get("save_crops", options_cfg.get("save_crops", True))),
+            "save_tensors": bool(outputs_cfg.get("save_tensors", options_cfg.get("save_tensors", True))),
+            "save_previews": bool(outputs_cfg.get("save_previews", options_cfg.get("save_previews", True))),
         },
         "quality": {
-            "low_valid_ratio_threshold": float(quality_cfg.get("low_valid_ratio_threshold", 0.5)),
-            "high_black_crop_ratio_threshold": float(
-                quality_cfg.get("high_black_crop_ratio_threshold", DEFAULT_BLACK_CROP_RATIO_THRESHOLD)
-            ),
+            "low_valid_ratio_thresholds": low_valid_ratio_thresholds,
+            "high_black_crop_ratio_thresholds": high_black_crop_ratio_thresholds,
+            "high_previous_fallback_ratio_thresholds": high_previous_fallback_ratio_thresholds,
         },
     }
 
@@ -683,26 +737,31 @@ def _build_region_result(
 ) -> RegionBBoxResult:
     """Compute the current-frame bbox candidate for one region."""
 
-    crop_cfg = config["crop"]
     if region_name == "face":
+        face_cfg = config["crop"]["face"]
         return face_bbox_from_wholebody133(
             frame_keypoints,
             image_w=image_w,
             image_h=image_h,
-            conf_thr=crop_cfg["confidence_threshold"],
-            primary_margin=crop_cfg["face_margin"],
-            fallback_margin=crop_cfg["face_fallback_margin"],
-            min_face_points=crop_cfg["min_face_points"],
-            min_anchor_points=crop_cfg["min_face_anchor_points"],
+            conf_thr=face_cfg["conf_threshold"],
+            primary_margin=face_cfg["margin"],
+            fallback_margin=face_cfg["fallback_anchor_margin"],
+            min_face_points=face_cfg["min_face_points"],
+            min_anchor_points=face_cfg["min_anchor_points"],
+            min_bbox_size_px=face_cfg["min_bbox_size_px"],
+            max_bbox_size_ratio=face_cfg["max_bbox_size_ratio"],
         )
+    hand_cfg = config["crop"]["hand"]
     return hand_bbox_from_wholebody133(
         frame_keypoints,
         region_name=region_name,
         image_w=image_w,
         image_h=image_h,
-        conf_thr=crop_cfg["confidence_threshold"],
-        margin=crop_cfg["hand_margin"],
-        min_points=crop_cfg["min_hand_points"],
+        conf_thr=hand_cfg["conf_threshold"],
+        margin=hand_cfg["margin"],
+        min_points=hand_cfg["min_points"],
+        min_bbox_size_px=hand_cfg["min_bbox_size_px"],
+        max_bbox_size_ratio=hand_cfg["max_bbox_size_ratio"],
     )
 
 
@@ -825,6 +884,7 @@ def process_sample(
         confidence_sums = _region_metric_defaults()
         confidence_counts = {region: 0 for region in REGION_NAMES}
         previous_boxes: dict[str, BoundingBox | None] = {region: None for region in REGION_NAMES}
+        consecutive_fallback_counts = _region_int_defaults()
         prev_fallback_counts = _region_int_defaults()
         black_counts = _region_int_defaults()
         frame_read_errors = 0
@@ -846,6 +906,7 @@ def process_sample(
                     region_index = REGION_TO_INDEX[region_name]
                     region_data[region_index, clip_index] = black_fallback_crop(crop_size)
                     bbox_source[region_index, clip_index] = BBOX_SOURCE_BLACK_CROP_FAILED
+                    consecutive_fallback_counts[region_name] = 0
                     black_counts[region_name] += 1
                 continue
 
@@ -854,6 +915,11 @@ def process_sample(
             for region_name in REGION_NAMES:
                 region_index = REGION_TO_INDEX[region_name]
                 try:
+                    max_consecutive_fallback = (
+                        int(config["crop"]["face"]["max_consecutive_fallback"])
+                        if region_name == "face"
+                        else int(config["crop"]["hand"]["max_consecutive_fallback"])
+                    )
                     bbox_result = _build_region_result(
                         region_name,
                         frame_keypoints=frame_keypoints,
@@ -862,13 +928,19 @@ def process_sample(
                         config=config,
                     )
                     box = bbox_result.box
-                    if box is None and previous_boxes[region_name] is not None:
+                    if (
+                        box is None
+                        and previous_boxes[region_name] is not None
+                        and consecutive_fallback_counts[region_name] < max_consecutive_fallback
+                    ):
                         box = previous_boxes[region_name]
                         prev_fallback_counts[region_name] += 1
+                        consecutive_fallback_counts[region_name] += 1
                         bbox_source[region_index, clip_index] = BBOX_SOURCE_PREVIOUS_BBOX_FALLBACK
                     crop = crop_and_resize(image, box, crop_size)
                     if bbox_result.box is not None:
                         previous_boxes[region_name] = bbox_result.box
+                        consecutive_fallback_counts[region_name] = 0
                         valid_mask[region_index, clip_index] = 1
                         bbox_source[region_index, clip_index] = BBOX_SOURCE_CURRENT_KEYPOINTS
                         confidence_sums[region_name] += float(bbox_result.mean_confidence)
@@ -876,6 +948,15 @@ def process_sample(
                     elif box is not None:
                         valid_mask[region_index, clip_index] = 1
                     else:
+                        if (
+                            previous_boxes[region_name] is not None
+                            and consecutive_fallback_counts[region_name] >= max_consecutive_fallback
+                        ):
+                            _add_note(
+                                notes,
+                                f"{region_name}_fallback_limit_reached={max_consecutive_fallback}",
+                            )
+                        consecutive_fallback_counts[region_name] = 0
                         bbox_source[region_index, clip_index] = BBOX_SOURCE_BLACK_CROP_FAILED
                         black_counts[region_name] += 1
                     bboxes[region_index, clip_index] = _box_to_array(box)
@@ -1087,6 +1168,8 @@ def build_metadata(config: dict[str, Any]) -> dict[str, Any]:
         "crop_source": "wholebody_133_keypoints",
         "bbox_source_codes": {str(key): value for key, value in BBOX_SOURCE_NAMES.items()},
         "overwrite": bool(config["options"]["overwrite"]),
+        "hand_policy": dict(crop_cfg["hand"]),
+        "face_policy": dict(crop_cfg["face"]),
     }
 
 
@@ -1096,15 +1179,20 @@ def build_low_quality_frame(
 ) -> pd.DataFrame:
     """Build the suspicious-sample dataframe for manual inspection."""
 
-    low_valid_thr = float(config["quality"]["low_valid_ratio_threshold"])
-    high_black_thr = float(config["quality"]["high_black_crop_ratio_threshold"])
-
     conditions: list[pd.Series] = [combined_manifest["status"].fillna("").astype(str).str.lower() == "error"]
     for region_name in REGION_NAMES:
+        low_valid_thr = float(config["quality"]["low_valid_ratio_thresholds"][region_name])
+        high_black_thr = float(config["quality"]["high_black_crop_ratio_thresholds"][region_name])
+        high_previous_thr = float(config["quality"]["high_previous_fallback_ratio_thresholds"][region_name])
         valid_values = pd.to_numeric(combined_manifest[f"{region_name}_valid_ratio"], errors="coerce").fillna(0.0)
         black_values = pd.to_numeric(combined_manifest[f"{region_name}_black_crop_ratio"], errors="coerce").fillna(0.0)
+        previous_values = pd.to_numeric(
+            combined_manifest[f"{region_name}_previous_fallback_ratio"],
+            errors="coerce",
+        ).fillna(0.0)
         conditions.append(valid_values < low_valid_thr)
         conditions.append(black_values > high_black_thr)
+        conditions.append(previous_values > high_previous_thr)
 
     mask = conditions[0].copy()
     for condition in conditions[1:]:
@@ -1187,8 +1275,9 @@ def build_report(
     """Build the region crop quality report."""
 
     subset = config["dataset"]["subset"]
-    low_valid_ratio_threshold = float(config["quality"]["low_valid_ratio_threshold"])
-    high_black_ratio_threshold = float(config["quality"]["high_black_crop_ratio_threshold"])
+    low_valid_ratio_thresholds = config["quality"]["low_valid_ratio_thresholds"]
+    high_black_ratio_thresholds = config["quality"]["high_black_crop_ratio_thresholds"]
+    high_previous_fallback_ratio_thresholds = config["quality"]["high_previous_fallback_ratio_thresholds"]
     ok_frame = combined_manifest[combined_manifest["status"] == "ok"].copy()
     tensor_shape = (
         metadata["num_regions"],
@@ -1308,8 +1397,9 @@ def build_report(
             "",
             "## Low-Quality Summary",
             "",
-            f"- low valid ratio threshold: `{low_valid_ratio_threshold}`",
-            f"- high black crop ratio threshold: `{high_black_ratio_threshold}`",
+            f"- low valid ratio thresholds: `{json.dumps(low_valid_ratio_thresholds, ensure_ascii=False)}`",
+            f"- high black crop ratio thresholds: `{json.dumps(high_black_ratio_thresholds, ensure_ascii=False)}`",
+            f"- high previous fallback ratio thresholds: `{json.dumps(high_previous_fallback_ratio_thresholds, ensure_ascii=False)}`",
             f"- low-quality sample count: `{len(low_quality_frame)}`",
             f"- low-quality CSV: `{stringify_path(paths['low_quality_csv_path'])}`",
             "",
