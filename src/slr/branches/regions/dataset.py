@@ -411,6 +411,7 @@ class RegionClipDataset(Dataset):
                 raise KeyError(f"Region tensor file {path} does not contain the required 'data' key.")
             data = np.asarray(payload["data"], dtype=np.uint8)
             valid_mask = np.asarray(payload["valid_mask"], dtype=np.uint8) if "valid_mask" in payload else None
+            bbox_source = np.asarray(payload["bbox_source"], dtype=np.uint8) if "bbox_source" in payload else None
             bboxes = np.asarray(payload["bboxes"], dtype=np.float32) if "bboxes" in payload else None
             frame_indices = np.asarray(payload["frame_indices"], dtype=np.int32) if "frame_indices" in payload else None
 
@@ -421,6 +422,7 @@ class RegionClipDataset(Dataset):
         return {
             "data": data,
             "valid_mask": valid_mask,
+            "bbox_source": bbox_source,
             "bboxes": bboxes,
             "frame_indices": frame_indices,
         }
@@ -437,11 +439,13 @@ class RegionClipDataset(Dataset):
             return data, label
 
         valid_mask = payload["valid_mask"]
+        bbox_source = payload["bbox_source"]
         bboxes = payload["bboxes"]
         frame_indices = payload["frame_indices"]
         return {
             "data": data,
             "valid_mask": torch.as_tensor(valid_mask, dtype=torch.uint8) if valid_mask is not None else None,
+            "bbox_source": torch.as_tensor(bbox_source, dtype=torch.uint8) if bbox_source is not None else None,
             "bboxes": torch.as_tensor(bboxes, dtype=torch.float32) if bboxes is not None else None,
             "frame_indices": torch.as_tensor(frame_indices, dtype=torch.int32) if frame_indices is not None else None,
             "label": label,
@@ -495,6 +499,8 @@ def region_collate_fn(batch: Sequence[dict[str, Any] | tuple[torch.Tensor, int]]
 
     if all(item.get("valid_mask") is not None for item in batch):
         output["valid_mask"] = torch.stack([item["valid_mask"] for item in batch], dim=0)
+    if all(item.get("bbox_source") is not None for item in batch):
+        output["bbox_source"] = torch.stack([item["bbox_source"] for item in batch], dim=0)
     if all(item.get("bboxes") is not None for item in batch):
         output["bboxes"] = torch.stack([item["bboxes"] for item in batch], dim=0)
     if all(item.get("frame_indices") is not None for item in batch):

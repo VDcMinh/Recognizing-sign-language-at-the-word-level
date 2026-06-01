@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,10 @@ from slr.branches.regions.crop_utils import (
     hand_bbox_from_wholebody133,
 )
 from slr.branches.regions.region_schema import (
+    BBOX_SOURCE_BLACK_CROP_FAILED,
+    BBOX_SOURCE_CURRENT_KEYPOINTS,
+    BBOX_SOURCE_NAMES,
+    BBOX_SOURCE_PREVIOUS_BBOX_FALLBACK,
     DEFAULT_CLIP_LEN,
     DEFAULT_CROP_SIZE,
     DEFAULT_IMAGE_DTYPE,
@@ -53,6 +58,7 @@ from slr.utils.logging import setup_logger
 DEFAULT_CONFIG_PATH = Path("configs/preprocessing/region_crops.yaml")
 ALLOWED_SPLITS = ("train", "val", "test")
 DEFAULT_PREVIEW_FRAME_INDICES = (0, 15, 31, 47, 63)
+DEFAULT_BLACK_CROP_RATIO_THRESHOLD = 0.3
 LOGGER = setup_logger(__name__)
 
 
@@ -327,6 +333,9 @@ def load_config(config_path: Path, subset_override: str | None = None) -> dict[s
         },
         "quality": {
             "low_valid_ratio_threshold": float(quality_cfg.get("low_valid_ratio_threshold", 0.5)),
+            "high_black_crop_ratio_threshold": float(
+                quality_cfg.get("high_black_crop_ratio_threshold", DEFAULT_BLACK_CROP_RATIO_THRESHOLD)
+            ),
         },
     }
 
@@ -352,6 +361,7 @@ def resolve_paths(config: dict[str, Any]) -> dict[str, Path]:
         "reports_root": Path(output_cfg["reports_root"]),
         "logs_root": Path(output_cfg["logs_root"]),
         "metadata_path": Path(output_cfg["metadata_path"]),
+        "low_quality_csv_path": Path(output_cfg["reports_root"]) / f"{subset}_region_low_quality_samples.csv",
     }
 
 
@@ -528,6 +538,48 @@ def _region_metric_defaults() -> dict[str, float]:
     return {region: 0.0 for region in REGION_NAMES}
 
 
+def _region_int_defaults() -> dict[str, int]:
+    """Return default per-region integer counters."""
+
+    return {region: 0 for region in REGION_NAMES}
+
+
+def _directory_size_bytes(path: Path) -> int:
+    """Return the recursive size for one file or directory."""
+
+    if not path.exists():
+        return 0
+    if path.is_file():
+        return int(path.stat().st_size)
+    total = 0
+    for child in path.rglob("*"):
+        if child.is_file():
+            total += int(child.stat().st_size)
+    return total
+
+
+def _format_size(num_bytes: int) -> str:
+    """Format a byte count into a compact human-readable string."""
+
+    value = float(max(0, int(num_bytes)))
+    units = ("B", "KB", "MB", "GB", "TB")
+    for unit in units:
+        if value < 1024.0 or unit == units[-1]:
+            return f"{value:.2f} {unit}"
+        value /= 1024.0
+    return f"{num_bytes} B"
+
+
+def _manifest_ratio_columns_for_region(region_name: str) -> tuple[str, str, str]:
+    """Return manifest column names for one region's bbox-source ratios."""
+
+    return (
+        f"{region_name}_current_bbox_ratio",
+        f"{region_name}_previous_fallback_ratio",
+        f"{region_name}_black_crop_ratio",
+    )
+
+
 def _box_to_array(box: BoundingBox | None) -> np.ndarray:
     """Serialize one bbox to a fixed float32 array."""
 
@@ -701,6 +753,15 @@ def process_sample(
         "left_hand_valid_ratio": 0.0,
         "right_hand_valid_ratio": 0.0,
         "face_valid_ratio": 0.0,
+        "left_hand_current_bbox_ratio": 0.0,
+        "left_hand_previous_fallback_ratio": 0.0,
+        "left_hand_black_crop_ratio": 0.0,
+        "right_hand_current_bbox_ratio": 0.0,
+        "right_hand_previous_fallback_ratio": 0.0,
+        "right_hand_black_crop_ratio": 0.0,
+        "face_current_bbox_ratio": 0.0,
+        "face_previous_fallback_ratio": 0.0,
+        "face_black_crop_ratio": 0.0,
         "mean_left_hand_conf": 0.0,
         "mean_right_hand_conf": 0.0,
         "mean_face_conf": 0.0,
@@ -759,14 +820,15 @@ def process_sample(
         sampled_indices = np.linspace(0, usable_frames - 1, clip_length).round().astype(np.int32)
         region_data = np.zeros((NUM_REGIONS, clip_length, crop_size, crop_size, 3), dtype=np.uint8)
         valid_mask = np.zeros((NUM_REGIONS, clip_length), dtype=np.uint8)
+        bbox_source = np.zeros((NUM_REGIONS, clip_length), dtype=np.uint8)
         bboxes = np.full((NUM_REGIONS, clip_length, 4), fill_value=-1.0, dtype=np.float32)
         confidence_sums = _region_metric_defaults()
         confidence_counts = {region: 0 for region in REGION_NAMES}
         previous_boxes: dict[str, BoundingBox | None] = {region: None for region in REGION_NAMES}
-        prev_fallback_counts = {region: 0 for region in REGION_NAMES}
-        black_counts = {region: 0 for region in REGION_NAMES}
+        prev_fallback_counts = _region_int_defaults()
+        black_counts = _region_int_defaults()
         frame_read_errors = 0
-        frame_region_errors = {region: 0 for region in REGION_NAMES}
+        frame_region_errors = _region_int_defaults()
 
         if not dry_run and config["options"]["save_crops"]:
             ensure_dir(sample_crop_root)
@@ -783,6 +845,7 @@ def process_sample(
                 for region_name in REGION_NAMES:
                     region_index = REGION_TO_INDEX[region_name]
                     region_data[region_index, clip_index] = black_fallback_crop(crop_size)
+                    bbox_source[region_index, clip_index] = BBOX_SOURCE_BLACK_CROP_FAILED
                     black_counts[region_name] += 1
                 continue
 
@@ -802,15 +865,18 @@ def process_sample(
                     if box is None and previous_boxes[region_name] is not None:
                         box = previous_boxes[region_name]
                         prev_fallback_counts[region_name] += 1
+                        bbox_source[region_index, clip_index] = BBOX_SOURCE_PREVIOUS_BBOX_FALLBACK
                     crop = crop_and_resize(image, box, crop_size)
                     if bbox_result.box is not None:
                         previous_boxes[region_name] = bbox_result.box
                         valid_mask[region_index, clip_index] = 1
+                        bbox_source[region_index, clip_index] = BBOX_SOURCE_CURRENT_KEYPOINTS
                         confidence_sums[region_name] += float(bbox_result.mean_confidence)
                         confidence_counts[region_name] += 1
                     elif box is not None:
                         valid_mask[region_index, clip_index] = 1
                     else:
+                        bbox_source[region_index, clip_index] = BBOX_SOURCE_BLACK_CROP_FAILED
                         black_counts[region_name] += 1
                     bboxes[region_index, clip_index] = _box_to_array(box)
                     region_data[region_index, clip_index] = crop
@@ -818,6 +884,7 @@ def process_sample(
                     frame_region_errors[region_name] += 1
                     _add_note(notes, f"{region_name}_crop_error={type(exc).__name__}")
                     region_data[region_index, clip_index] = black_fallback_crop(crop_size)
+                    bbox_source[region_index, clip_index] = BBOX_SOURCE_BLACK_CROP_FAILED
                     black_counts[region_name] += 1
 
                 if not dry_run and config["options"]["save_crops"]:
@@ -837,6 +904,7 @@ def process_sample(
             tensor_payload = {
                 "data": tensor,
                 "valid_mask": valid_mask.astype(np.uint8),
+                "bbox_source": bbox_source.astype(np.uint8),
                 "bboxes": bboxes.astype(np.float32),
                 "frame_indices": sampled_indices.astype(np.int32),
                 "region_names": np.asarray(REGION_NAMES),
@@ -863,12 +931,18 @@ def process_sample(
         for region_name in REGION_NAMES:
             region_index = REGION_TO_INDEX[region_name]
             valid_ratio = float(valid_mask[region_index].mean())
+            current_ratio = float((bbox_source[region_index] == BBOX_SOURCE_CURRENT_KEYPOINTS).mean())
+            previous_ratio = float((bbox_source[region_index] == BBOX_SOURCE_PREVIOUS_BBOX_FALLBACK).mean())
+            black_ratio = float((bbox_source[region_index] == BBOX_SOURCE_BLACK_CROP_FAILED).mean())
             mean_conf = (
                 float(confidence_sums[region_name] / confidence_counts[region_name])
                 if confidence_counts[region_name] > 0
                 else 0.0
             )
             result[f"{region_name}_valid_ratio"] = valid_ratio
+            result[f"{region_name}_current_bbox_ratio"] = current_ratio
+            result[f"{region_name}_previous_fallback_ratio"] = previous_ratio
+            result[f"{region_name}_black_crop_ratio"] = black_ratio
             result[f"mean_{region_name}_conf"] = mean_conf
             stats["region_valid_ratio"][region_name] = valid_ratio
             stats["region_mean_conf"][region_name] = mean_conf
@@ -969,8 +1043,20 @@ def process_split(
     }
     for region_name in REGION_NAMES:
         valid_values = pd.to_numeric(output[f"{region_name}_valid_ratio"], errors="coerce")
+        current_values = pd.to_numeric(output[f"{region_name}_current_bbox_ratio"], errors="coerce")
+        previous_values = pd.to_numeric(output[f"{region_name}_previous_fallback_ratio"], errors="coerce")
+        black_values = pd.to_numeric(output[f"{region_name}_black_crop_ratio"], errors="coerce")
         conf_values = pd.to_numeric(output[f"mean_{region_name}_conf"], errors="coerce")
         stats[f"{region_name}_valid_ratio_avg"] = float(valid_values[ok_mask].mean()) if ok_mask.any() else 0.0
+        stats[f"{region_name}_current_bbox_ratio_avg"] = (
+            float(current_values[ok_mask].mean()) if ok_mask.any() else 0.0
+        )
+        stats[f"{region_name}_previous_fallback_ratio_avg"] = (
+            float(previous_values[ok_mask].mean()) if ok_mask.any() else 0.0
+        )
+        stats[f"{region_name}_black_crop_ratio_avg"] = (
+            float(black_values[ok_mask].mean()) if ok_mask.any() else 0.0
+        )
         stats[f"{region_name}_mean_conf_avg"] = float(conf_values[ok_mask].mean()) if ok_mask.any() else 0.0
     LOGGER.info(
         "Finished split=%s ok=%s errors=%s",
@@ -999,6 +1085,92 @@ def build_metadata(config: dict[str, Any]) -> dict[str, Any]:
         "image_dtype": DEFAULT_IMAGE_DTYPE,
         "coordinate_source": "standardized_frames",
         "crop_source": "wholebody_133_keypoints",
+        "bbox_source_codes": {str(key): value for key, value in BBOX_SOURCE_NAMES.items()},
+        "overwrite": bool(config["options"]["overwrite"]),
+    }
+
+
+def build_low_quality_frame(
+    combined_manifest: pd.DataFrame,
+    config: dict[str, Any],
+) -> pd.DataFrame:
+    """Build the suspicious-sample dataframe for manual inspection."""
+
+    low_valid_thr = float(config["quality"]["low_valid_ratio_threshold"])
+    high_black_thr = float(config["quality"]["high_black_crop_ratio_threshold"])
+
+    conditions: list[pd.Series] = [combined_manifest["status"].fillna("").astype(str).str.lower() == "error"]
+    for region_name in REGION_NAMES:
+        valid_values = pd.to_numeric(combined_manifest[f"{region_name}_valid_ratio"], errors="coerce").fillna(0.0)
+        black_values = pd.to_numeric(combined_manifest[f"{region_name}_black_crop_ratio"], errors="coerce").fillna(0.0)
+        conditions.append(valid_values < low_valid_thr)
+        conditions.append(black_values > high_black_thr)
+
+    mask = conditions[0].copy()
+    for condition in conditions[1:]:
+        mask = mask | condition
+
+    selected_columns = [
+        "sample_id",
+        "video_id",
+        "split",
+        "class_id",
+        "gloss",
+        "preview_path",
+        "left_hand_valid_ratio",
+        "right_hand_valid_ratio",
+        "face_valid_ratio",
+        "left_hand_black_crop_ratio",
+        "right_hand_black_crop_ratio",
+        "face_black_crop_ratio",
+        "left_hand_previous_fallback_ratio",
+        "right_hand_previous_fallback_ratio",
+        "face_previous_fallback_ratio",
+        "status",
+        "error_message",
+        "notes",
+    ]
+    output = combined_manifest.loc[mask, selected_columns].copy()
+    if output.empty:
+        return output
+
+    output["_max_black_crop_ratio"] = output[
+        ["left_hand_black_crop_ratio", "right_hand_black_crop_ratio", "face_black_crop_ratio"]
+    ].apply(pd.to_numeric, errors="coerce").max(axis=1)
+    output["_min_valid_ratio"] = output[
+        ["left_hand_valid_ratio", "right_hand_valid_ratio", "face_valid_ratio"]
+    ].apply(pd.to_numeric, errors="coerce").min(axis=1)
+    output = output.sort_values(
+        by=["status", "_max_black_crop_ratio", "_min_valid_ratio", "split", "sample_id"],
+        ascending=[False, False, True, True, True],
+        kind="stable",
+    ).reset_index(drop=True)
+    return output.drop(columns=["_max_black_crop_ratio", "_min_valid_ratio"])
+
+
+def _aggregate_region_metrics(frame: pd.DataFrame, region_name: str) -> dict[str, float]:
+    """Aggregate one region's quality metrics over a manifest frame."""
+
+    if frame.empty:
+        return {
+            "valid_ratio_avg": 0.0,
+            "current_bbox_ratio_avg": 0.0,
+            "previous_fallback_ratio_avg": 0.0,
+            "black_crop_ratio_avg": 0.0,
+            "mean_conf_avg": 0.0,
+        }
+    return {
+        "valid_ratio_avg": float(pd.to_numeric(frame[f"{region_name}_valid_ratio"], errors="coerce").mean()),
+        "current_bbox_ratio_avg": float(
+            pd.to_numeric(frame[f"{region_name}_current_bbox_ratio"], errors="coerce").mean()
+        ),
+        "previous_fallback_ratio_avg": float(
+            pd.to_numeric(frame[f"{region_name}_previous_fallback_ratio"], errors="coerce").mean()
+        ),
+        "black_crop_ratio_avg": float(
+            pd.to_numeric(frame[f"{region_name}_black_crop_ratio"], errors="coerce").mean()
+        ),
+        "mean_conf_avg": float(pd.to_numeric(frame[f"mean_{region_name}_conf"], errors="coerce").mean()),
     }
 
 
@@ -1009,26 +1181,53 @@ def build_report(
     manifest_paths: list[Path],
     metadata: dict[str, Any],
     paths: dict[str, Path],
+    low_quality_frame: pd.DataFrame,
+    commands_run: list[str],
 ) -> str:
     """Build the region crop quality report."""
 
     subset = config["dataset"]["subset"]
     low_valid_ratio_threshold = float(config["quality"]["low_valid_ratio_threshold"])
-    ok_mask = combined_manifest["status"] == "ok"
+    high_black_ratio_threshold = float(config["quality"]["high_black_crop_ratio_threshold"])
+    ok_frame = combined_manifest[combined_manifest["status"] == "ok"].copy()
+    tensor_shape = (
+        metadata["num_regions"],
+        metadata["num_channels"],
+        metadata["clip_len"],
+        metadata["crop_size"],
+        metadata["crop_size"],
+    )
+    split_frames = {
+        split: combined_manifest[combined_manifest["split"] == split].copy()
+        for split in config["input"]["splits"]
+    }
+    ok_split_frames = {
+        split: frame[frame["status"] == "ok"].copy()
+        for split, frame in split_frames.items()
+    }
+    all_metrics = {region: _aggregate_region_metrics(ok_frame, region) for region in REGION_NAMES}
+    size_crops = _directory_size_bytes(paths["crops_subset_root"])
+    size_tensors = _directory_size_bytes(paths["tensors_subset_root"])
+    size_previews = _directory_size_bytes(paths["previews_subset_root"])
+    size_manifests = _directory_size_bytes(paths["manifests_root"])
+    size_reports = _directory_size_bytes(paths["reports_root"])
+    total_output_size = size_crops + size_tensors + size_previews + size_manifests + size_reports
 
     lines = [
         f"# WLASL Region Crop Quality Report: {subset}",
         "",
-        f"- dataset: `{metadata['dataset']}`",
+        "## Overview",
+        "",
         f"- subset: `{subset}`",
-        f"- pose_backend: `{metadata['pose_backend']}`",
-        f"- pose_layout: `{metadata['pose_layout']}`",
         f"- region order: `{_json_text(REGION_NAMES)}`",
-        f"- tensor format: `{metadata['tensor_format']}`",
-        f"- tensor shape: `{(metadata['num_regions'], metadata['num_channels'], metadata['clip_len'], metadata['crop_size'], metadata['crop_size'])}`",
+        f"- tensor shape: `{tensor_shape}`",
+        f"- clip length: `{metadata['clip_len']}`",
+        f"- crop size: `{metadata['crop_size']}`",
+        f"- output root: `{stringify_path(config['output']['root'])}`",
+        f"- overwrite enabled: `{metadata['overwrite']}`",
         f"- total samples: `{len(combined_manifest)}`",
-        f"- status=ok count: `{int(ok_mask.sum())}`",
-        f"- status=error count: `{int((~ok_mask).sum())}`",
+        f"- total ok samples: `{int((combined_manifest['status'] == 'ok').sum())}`",
+        f"- total error samples: `{int((combined_manifest['status'] != 'ok').sum())}`",
         "",
         "## Split Summary",
         "",
@@ -1042,32 +1241,136 @@ def build_report(
                 f"- total samples: `{stats['input_samples']}`",
                 f"- ok samples: `{stats['ok_samples']}`",
                 f"- error samples: `{stats['error_samples']}`",
-                f"- left_hand valid ratio avg: `{stats['left_hand_valid_ratio_avg']:.6f}`",
-                f"- right_hand valid ratio avg: `{stats['right_hand_valid_ratio_avg']:.6f}`",
-                f"- face valid ratio avg: `{stats['face_valid_ratio_avg']:.6f}`",
-                f"- left_hand confidence avg: `{stats['left_hand_mean_conf_avg']:.6f}`",
-                f"- right_hand confidence avg: `{stats['right_hand_mean_conf_avg']:.6f}`",
-                f"- face confidence avg: `{stats['face_mean_conf_avg']:.6f}`",
                 "",
             ]
         )
 
-    lines.extend(["## Global Quality", ""])
+    lines.extend(["## Valid Ratio", ""])
+    for split, frame in ok_split_frames.items():
+        lines.append(f"### {split}")
+        lines.append("")
+        metrics = {region: _aggregate_region_metrics(frame, region) for region in REGION_NAMES}
+        for region_name in REGION_NAMES:
+            lines.append(
+                f"- {region_name} valid ratio avg: `{metrics[region_name]['valid_ratio_avg']:.6f}`"
+            )
+        lines.append("")
+
+    lines.append("### all")
+    lines.append("")
     for region_name in REGION_NAMES:
-        valid_values = pd.to_numeric(combined_manifest[f"{region_name}_valid_ratio"], errors="coerce")
-        conf_values = pd.to_numeric(combined_manifest[f"mean_{region_name}_conf"], errors="coerce")
-        low_valid_count = int((valid_values[ok_mask] < low_valid_ratio_threshold).sum()) if ok_mask.any() else 0
+        lines.append(f"- {region_name} valid ratio avg: `{all_metrics[region_name]['valid_ratio_avg']:.6f}`")
+
+    lines.extend(["", "## Bbox Source Ratio", ""])
+    for split, frame in ok_split_frames.items():
+        lines.append(f"### {split}")
+        lines.append("")
+        metrics = {region: _aggregate_region_metrics(frame, region) for region in REGION_NAMES}
+        for region_name in REGION_NAMES:
+            lines.extend(
+                [
+                    f"- {region_name} current keypoint ratio: `{metrics[region_name]['current_bbox_ratio_avg']:.6f}`",
+                    f"- {region_name} previous bbox fallback ratio: `{metrics[region_name]['previous_fallback_ratio_avg']:.6f}`",
+                    f"- {region_name} black crop ratio: `{metrics[region_name]['black_crop_ratio_avg']:.6f}`",
+                ]
+            )
+        lines.append("")
+
+    lines.append("### all")
+    lines.append("")
+    for region_name in REGION_NAMES:
         lines.extend(
             [
-                f"- {region_name} valid ratio avg: `{float(valid_values[ok_mask].mean()) if ok_mask.any() else 0.0:.6f}`",
-                f"- {region_name} confidence avg: `{float(conf_values[ok_mask].mean()) if ok_mask.any() else 0.0:.6f}`",
-                f"- {region_name} low-valid samples (< {low_valid_ratio_threshold:.2f}): `{low_valid_count}`",
+                f"- {region_name} current keypoint ratio: `{all_metrics[region_name]['current_bbox_ratio_avg']:.6f}`",
+                f"- {region_name} previous bbox fallback ratio: `{all_metrics[region_name]['previous_fallback_ratio_avg']:.6f}`",
+                f"- {region_name} black crop ratio: `{all_metrics[region_name]['black_crop_ratio_avg']:.6f}`",
             ]
         )
 
-    lines.extend(["", "## Output Paths", ""])
+    lines.extend(["", "## Confidence", ""])
+    for split, frame in ok_split_frames.items():
+        lines.append(f"### {split}")
+        lines.append("")
+        metrics = {region: _aggregate_region_metrics(frame, region) for region in REGION_NAMES}
+        for region_name in REGION_NAMES:
+            lines.append(
+                f"- {region_name} mean confidence: `{metrics[region_name]['mean_conf_avg']:.6f}`"
+            )
+        lines.append("")
+
+    lines.append("### all")
+    lines.append("")
+    for region_name in REGION_NAMES:
+        lines.append(f"- {region_name} mean confidence: `{all_metrics[region_name]['mean_conf_avg']:.6f}`")
+
     lines.extend(
         [
+            "",
+            "## Low-Quality Summary",
+            "",
+            f"- low valid ratio threshold: `{low_valid_ratio_threshold}`",
+            f"- high black crop ratio threshold: `{high_black_ratio_threshold}`",
+            f"- low-quality sample count: `{len(low_quality_frame)}`",
+            f"- low-quality CSV: `{stringify_path(paths['low_quality_csv_path'])}`",
+            "",
+            "### Top 20 Suspicious Samples",
+            "",
+        ]
+    )
+    if low_quality_frame.empty:
+        lines.append("- none")
+    else:
+        preview_columns = [
+            "sample_id",
+            "split",
+            "left_hand_black_crop_ratio",
+            "right_hand_black_crop_ratio",
+            "face_black_crop_ratio",
+            "left_hand_valid_ratio",
+            "right_hand_valid_ratio",
+            "face_valid_ratio",
+            "status",
+            "preview_path",
+        ]
+        ranked = low_quality_frame.copy()
+        ranked["_max_black_crop_ratio"] = ranked[
+            ["left_hand_black_crop_ratio", "right_hand_black_crop_ratio", "face_black_crop_ratio"]
+        ].apply(pd.to_numeric, errors="coerce").max(axis=1)
+        ranked["_min_valid_ratio"] = ranked[
+            ["left_hand_valid_ratio", "right_hand_valid_ratio", "face_valid_ratio"]
+        ].apply(pd.to_numeric, errors="coerce").min(axis=1)
+        ranked = ranked.sort_values(
+            by=["_max_black_crop_ratio", "_min_valid_ratio", "split", "sample_id"],
+            ascending=[False, True, True, True],
+            kind="stable",
+        ).head(20)
+        for _, row in ranked[preview_columns].iterrows():
+            lines.append(
+                "- "
+                f"{row['sample_id']} ({row['split']}) "
+                f"black=[{float(row['left_hand_black_crop_ratio']):.3f}, "
+                f"{float(row['right_hand_black_crop_ratio']):.3f}, "
+                f"{float(row['face_black_crop_ratio']):.3f}] "
+                f"valid=[{float(row['left_hand_valid_ratio']):.3f}, "
+                f"{float(row['right_hand_valid_ratio']):.3f}, "
+                f"{float(row['face_valid_ratio']):.3f}] "
+                f"status=`{row['status']}` preview=`{row['preview_path']}`"
+            )
+
+    lines.extend(
+        [
+            "",
+            "## Output Size",
+            "",
+            f"- crops/nslt100: `{_format_size(size_crops)}`",
+            f"- tensors/nslt100: `{_format_size(size_tensors)}`",
+            f"- previews/nslt100: `{_format_size(size_previews)}`",
+            f"- manifests: `{_format_size(size_manifests)}`",
+            f"- reports: `{_format_size(size_reports)}`",
+            f"- total regions output size for nslt100: `{_format_size(total_output_size)}`",
+            "",
+            "## Output Paths",
+            "",
             f"- crops root: `{stringify_path(paths['crops_subset_root'])}`",
             f"- tensors root: `{stringify_path(paths['tensors_subset_root'])}`",
             f"- previews root: `{stringify_path(paths['previews_subset_root'])}`",
@@ -1078,10 +1381,28 @@ def build_report(
     for manifest_path in manifest_paths:
         lines.append(f"- manifest: `{stringify_path(manifest_path)}`")
 
-    status_counts = combined_manifest["status"].value_counts().to_dict()
+    lines.extend(["", "## Commands Run", ""])
+    for command in commands_run:
+        lines.append(f"- `{command}`")
+
     lines.extend(["", "## Status Counts", ""])
+    status_counts = combined_manifest["status"].value_counts().to_dict()
     for status, count in sorted(status_counts.items()):
         lines.append(f"- {status}: `{count}`")
+
+    lines.extend(["", "## Conclusion", ""])
+    lines.append(
+        f"- full build success: `{int((combined_manifest['status'] != 'ok').sum()) == 0}`"
+    )
+    lines.append(f"- total error samples: `{int((combined_manifest['status'] != 'ok').sum())}`")
+    lines.append(
+        "- crop readiness for training: "
+        f"`{'needs_manual_review' if len(low_quality_frame) > 0 or int((combined_manifest['status'] != 'ok').sum()) > 0 else 'looks_ready'}`"
+    )
+    if low_quality_frame.empty and int((combined_manifest["status"] != "ok").sum()) == 0:
+        lines.append("- next action: proceed to manual preview inspection, then move to training when satisfied.")
+    else:
+        lines.append("- next action: inspect low-quality previews before starting any training run.")
 
     lines.append("")
     return "\n".join(lines)
@@ -1123,6 +1444,7 @@ def run(
             config["crop"]["crop_size"],
         ),
     )
+    commands_run = [" ".join([sys.executable, *sys.argv])]
 
     if not dry_run:
         ensure_dir(paths["crops_subset_root"])
@@ -1177,6 +1499,7 @@ def run(
     )
 
     metadata = build_metadata(config)
+    low_quality_frame = build_low_quality_frame(combined_manifest, config)
     report_path = paths["reports_root"] / f"{subset_name}_region_crop_quality_report.md"
     report_text = build_report(
         combined_manifest=combined_manifest,
@@ -1185,13 +1508,17 @@ def run(
         manifest_paths=manifest_paths,
         metadata=metadata,
         paths=paths,
+        low_quality_frame=low_quality_frame,
+        commands_run=commands_run,
     )
 
     if not dry_run:
         write_json(metadata, paths["metadata_path"])
+        write_dataframe_csv(low_quality_frame, paths["low_quality_csv_path"])
         write_text(report_text, report_path)
 
     LOGGER.info("Report path: %s", stringify_path(report_path))
+    LOGGER.info("Low-quality CSV path: %s", stringify_path(paths["low_quality_csv_path"]))
     LOGGER.info("Metadata path: %s", stringify_path(paths["metadata_path"]))
     LOGGER.info(
         "Finished region input build. total=%s ok=%s errors=%s",

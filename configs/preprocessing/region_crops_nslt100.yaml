@@ -52,3 +52,4 @@ options:
 
 quality:
   low_valid_ratio_threshold: 0.5
+  high_black_crop_ratio_threshold: 0.3
