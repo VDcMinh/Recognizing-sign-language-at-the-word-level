@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+WLASL_DATASET_MARKER = "data/datasets/WLASL/"
+
 
 def ensure_dir(path: str | Path) -> Path:
     """Create a directory if it does not exist and return it as ``Path``."""
@@ -93,3 +95,53 @@ def write_dataframe_csv(frame, path: str | Path, **kwargs) -> None:
     defaults = {"encoding": "utf-8"}
     defaults.update(kwargs)
     write_csv(frame, path, **defaults)
+
+
+def stringify_path(path: str | Path | None) -> str:
+    """Return a stable POSIX-like string for one path."""
+
+    if path is None:
+        return ""
+    return Path(path).as_posix()
+
+
+def remap_wlasl_path(
+    path_text: str | Path,
+    *,
+    project_root: str | Path | None = None,
+    dataset_root: str | Path | None = None,
+) -> Path:
+    """Map stored absolute/foreign WLASL paths back into the local workspace."""
+
+    raw_path = Path(path_text)
+    if raw_path.exists():
+        return raw_path
+
+    project_path = Path(project_root or Path.cwd()).resolve()
+    dataset_path = (
+        Path(dataset_root).resolve()
+        if dataset_root is not None
+        else (project_path / "data" / "datasets" / "WLASL").resolve()
+    )
+    normalized = str(path_text).replace("\\", "/")
+    candidates: list[Path] = []
+
+    if raw_path.is_absolute():
+        candidates.append(raw_path)
+    else:
+        candidates.append(project_path / raw_path)
+        candidates.append(dataset_path / raw_path)
+
+    if WLASL_DATASET_MARKER in normalized:
+        suffix = normalized.split(WLASL_DATASET_MARKER, 1)[1]
+        candidates.append(dataset_path / Path(suffix))
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate.resolve(strict=False))
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.exists():
+            return candidate.resolve()
+    return candidates[0].resolve(strict=False) if candidates else raw_path

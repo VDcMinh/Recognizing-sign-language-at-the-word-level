@@ -84,6 +84,25 @@ def clip_bbox(box: BoundingBox, width: int, height: int) -> BoundingBox:
     )
 
 
+def square_bbox(box: BoundingBox, scale: float = 1.0) -> BoundingBox:
+    """Convert one bbox into a square bbox centered on the original box."""
+
+    if scale <= 0:
+        raise ValueError("scale must be positive.")
+    width = box.x2 - box.x1
+    height = box.y2 - box.y1
+    side = max(width, height) * float(scale)
+    center_x = (box.x1 + box.x2) / 2.0
+    center_y = (box.y1 + box.y2) / 2.0
+    half_side = side / 2.0
+    return BoundingBox(
+        x1=center_x - half_side,
+        y1=center_y - half_side,
+        x2=center_x + half_side,
+        y2=center_y + half_side,
+    )
+
+
 def bbox_to_int(box: BoundingBox) -> tuple[int, int, int, int]:
     """Convert a bbox to clipped integer pixel coordinates."""
 

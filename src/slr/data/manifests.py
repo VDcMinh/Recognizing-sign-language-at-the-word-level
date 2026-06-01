@@ -208,3 +208,39 @@ SKELETON_INPUT_MANIFEST_COLUMNS = [
     "error_message",
     "notes",
 ]
+
+REGION_NPZ_FIELDS = [
+    "data",
+    "valid_mask",
+    "bboxes",
+    "frame_indices",
+    "region_names",
+    "label",
+    "sample_id",
+    "video_id",
+    "gloss",
+]
+
+REGION_INPUT_MANIFEST_COLUMNS = [
+    "instance_uid",
+    "sample_id",
+    "video_id",
+    "gloss",
+    "class_id",
+    "split",
+    "tensor_path",
+    "crop_root",
+    "preview_path",
+    "num_frames_original",
+    "num_frames_used",
+    "tensor_shape",
+    "left_hand_valid_ratio",
+    "right_hand_valid_ratio",
+    "face_valid_ratio",
+    "mean_left_hand_conf",
+    "mean_right_hand_conf",
+    "mean_face_conf",
+    "status",
+    "error_message",
+    "notes",
+]

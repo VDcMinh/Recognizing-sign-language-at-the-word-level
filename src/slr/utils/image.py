@@ -7,6 +7,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from slr.utils.bbox import BoundingBox, bbox_to_int, is_valid_bbox
+
 
 def read_image(path: str | Path) -> np.ndarray:
     """Read an image as a BGR numpy array."""
@@ -76,3 +78,24 @@ def save_image(path: str | Path, image: np.ndarray, jpg_quality: int = 95) -> No
 
     if not cv2.imwrite(str(target), image_uint8, params):
         raise OSError(f"Could not write image: {target}")
+
+
+def make_black_image(width: int, height: int) -> np.ndarray:
+    """Create one black ``uint8`` RGB/BGR image."""
+
+    return np.zeros((int(height), int(width), 3), dtype=np.uint8)
+
+
+def crop_image(image: np.ndarray, box: BoundingBox | None) -> np.ndarray:
+    """Crop one image with a bbox, returning an empty crop when invalid."""
+
+    if box is None or not is_valid_bbox(box):
+        return image[:0, :0].copy()
+    x1, y1, x2, y2 = bbox_to_int(box)
+    x1 = max(0, min(x1, image.shape[1]))
+    x2 = max(0, min(x2, image.shape[1]))
+    y1 = max(0, min(y1, image.shape[0]))
+    y2 = max(0, min(y2, image.shape[0]))
+    if x2 <= x1 or y2 <= y1:
+        return image[:0, :0].copy()
+    return image[y1:y2, x1:x2].copy()

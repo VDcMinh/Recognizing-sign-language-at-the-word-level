@@ -1,11 +1,32 @@
 branch: regions
-inputs:
-  face_dir: data/datasets/WLASL/branch_inputs/regions/rtmw_l/face
-  left_hand_dir: data/datasets/WLASL/branch_inputs/regions/rtmw_l/left_hand
-  right_hand_dir: data/datasets/WLASL/branch_inputs/regions/rtmw_l/right_hand
-model:
-  name: cnn_lstm
-  num_frames: 64
-training:
+
+dataset:
+  name: WLASL
+  subset: nslt100
+  data_root: data/datasets/WLASL/branch_inputs/regions/rtmw_l
+  manifests:
+    train: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt100_train.csv
+    val: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt100_val.csv
+    test: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt100_test.csv
+  regions:
+    - left_hand
+    - right_hand
+    - face
+  expected_shape:
+    - 3
+    - 3
+    - 64
+    - 112
+    - 112
+  return_metadata: true
+  strict_shape_check: true
+
+dataloader:
   batch_size: 8
-  learning_rate: 0.0005
+  num_workers: 0
+  pin_memory: false
+
+model:
+  name: face_hands_baseline
+  clip_length: 64
+  crop_size: 112

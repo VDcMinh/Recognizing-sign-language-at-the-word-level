@@ -12,6 +12,19 @@ WHOLEBODY_133 = "wholebody_133"
 WHOLEBODY_133_LAYOUT = WHOLEBODY_133
 WHOLEBODY_133_NUM_KEYPOINTS = 133
 
+NOSE = 0
+LEFT_EYE = 1
+RIGHT_EYE = 2
+LEFT_EAR = 3
+RIGHT_EAR = 4
+
+BODY_17 = tuple(range(0, 17))
+FOOT_6 = tuple(range(17, 23))
+FACE_68 = tuple(range(23, 91))
+LEFT_HAND_21 = tuple(range(91, 112))
+RIGHT_HAND_21 = tuple(range(112, 133))
+BODY_FACE_ANCHORS = (NOSE, LEFT_EYE, RIGHT_EYE, LEFT_EAR, RIGHT_EAR)
+
 WHOLEBODY_133_BODY_NAMES = (
     "nose",
     "left_eye",
@@ -51,11 +64,11 @@ WHOLEBODY_133_KEYPOINT_NAMES = (
 )
 
 WHOLEBODY_133_REGION_INDICES = {
-    "body": tuple(range(0, 17)),
-    "foot": tuple(range(17, 23)),
-    "face": tuple(range(23, 91)),
-    "left_hand": tuple(range(91, 112)),
-    "right_hand": tuple(range(112, 133)),
+    "body": BODY_17,
+    "foot": FOOT_6,
+    "face": FACE_68,
+    "left_hand": LEFT_HAND_21,
+    "right_hand": RIGHT_HAND_21,
 }
 
 BODY_7 = (
