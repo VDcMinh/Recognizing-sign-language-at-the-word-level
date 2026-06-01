@@ -49,6 +49,53 @@ class RegionSampleRecord:
     notes: str = ""
 
 
+def build_label_maps_from_manifest(
+    manifest: pd.DataFrame,
+    *,
+    logger=LOGGER,
+) -> tuple[dict[int, str], dict[str, int]]:
+    """Build ``class_id -> gloss`` and ``gloss -> class_id`` mappings from one manifest."""
+
+    if manifest.empty:
+        return {}, {}
+
+    require_columns(manifest, ("class_id", "gloss"), name="region_manifest")
+    working = manifest.loc[:, ["class_id", "gloss"]].copy()
+    working["class_id"] = working["class_id"].apply(lambda value: _parse_int(value, "class_id"))
+    working["gloss"] = working["gloss"].fillna("").astype(str)
+
+    id_to_gloss: dict[int, str] = {}
+    gloss_to_id: dict[str, int] = {}
+    duplicate_glosses: list[str] = []
+
+    for class_id, group in working.groupby("class_id", sort=True):
+        glosses = sorted({value.strip() for value in group["gloss"].tolist() if value.strip()})
+        gloss = glosses[0] if glosses else ""
+        id_to_gloss[int(class_id)] = gloss
+        if gloss:
+            existing = gloss_to_id.get(gloss)
+            if existing is not None and existing != int(class_id):
+                duplicate_glosses.append(gloss)
+            else:
+                gloss_to_id[gloss] = int(class_id)
+
+    class_ids = sorted(id_to_gloss)
+    expected_contiguous = list(range(min(class_ids), max(class_ids) + 1)) if class_ids else []
+    if class_ids and class_ids != expected_contiguous:
+        logger.warning(
+            "class_id values are not contiguous. min=%s max=%s unique=%s",
+            min(class_ids),
+            max(class_ids),
+            len(class_ids),
+        )
+    if duplicate_glosses:
+        logger.warning(
+            "Found gloss values mapped to multiple class IDs: %s",
+            ", ".join(sorted(set(duplicate_glosses))),
+        )
+    return id_to_gloss, gloss_to_id
+
+
 def _normalize_split(value: Any) -> str:
     """Normalize split values to lowercase train/val/test tokens."""
 
@@ -202,6 +249,7 @@ def load_region_train_config(
             "subset": str(dataset_cfg.get("subset", "nslt100")),
             "data_root": data_root,
             "regions": tuple(dataset_cfg.get("regions", REGION_NAMES)),
+            "num_classes": int(dataset_cfg.get("num_classes", 100)),
             "expected_shape": _parse_shape_value(dataset_cfg.get("expected_shape")) or DEFAULT_TENSOR_SHAPE,
             "manifests": resolved_manifests,
             "return_metadata": bool(dataset_cfg.get("return_metadata", True)),
@@ -226,6 +274,7 @@ class RegionClipDataset(Dataset):
         data_root: str | Path | None = None,
         split: str | None = None,
         expected_shape: Sequence[int] | str | None = None,
+        num_classes: int | None = None,
         return_metadata: bool = True,
         dtype: Any = torch.float32,
         strict_shape_check: bool = True,
@@ -239,6 +288,7 @@ class RegionClipDataset(Dataset):
         self.split = _normalize_split(split) if split is not None else None
         parsed_expected_shape = _parse_shape_value(expected_shape) if expected_shape is not None else None
         self.expected_shape = parsed_expected_shape or DEFAULT_TENSOR_SHAPE
+        self.num_classes = int(num_classes) if num_classes is not None else None
         self.return_metadata = bool(return_metadata)
         self.dtype = _coerce_torch_dtype(dtype)
         self.strict_shape_check = bool(strict_shape_check)
@@ -248,8 +298,11 @@ class RegionClipDataset(Dataset):
 
         if self.split is not None and self.split not in ALLOWED_SPLITS:
             raise ValueError(f"Unsupported split: {split!r}. Expected one of {ALLOWED_SPLITS}.")
+        if self.num_classes is not None and self.num_classes <= 0:
+            raise ValueError("num_classes must be positive when provided.")
 
         self.manifest = self._load_manifest()
+        self.id_to_gloss, self.gloss_to_id = build_label_maps_from_manifest(self.manifest, logger=self.logger)
         self.records = self._build_records()
         if not self.records:
             raise ValueError(
@@ -291,6 +344,7 @@ class RegionClipDataset(Dataset):
             data_root=dataset_cfg.get("data_root"),
             split=dataset_split,
             expected_shape=dataset_cfg.get("expected_shape"),
+            num_classes=dataset_cfg.get("num_classes"),
             return_metadata=dataset_cfg.get("return_metadata", True)
             if return_metadata is None
             else return_metadata,
@@ -362,6 +416,10 @@ class RegionClipDataset(Dataset):
             try:
                 self._validate_manifest_row_shape(row)
                 class_id = _parse_int(row.get("class_id"), "class_id")
+                if self.num_classes is not None and not 0 <= class_id < int(self.num_classes):
+                    raise ValueError(
+                        f"class_id {class_id} is outside the expected range [0, {int(self.num_classes) - 1}]."
+                    )
                 tensor_path = resolve_region_tensor_path(
                     row.get("tensor_path", ""),
                     project_root=self.project_root,
@@ -442,12 +500,23 @@ class RegionClipDataset(Dataset):
         bbox_source = payload["bbox_source"]
         bboxes = payload["bboxes"]
         frame_indices = payload["frame_indices"]
+        metadata = {
+            "sample_id": record.sample_id,
+            "video_id": record.video_id,
+            "gloss": record.gloss,
+            "class_id": label,
+            "split": record.split,
+            "path": str(record.tensor_path),
+            "preview_path": record.preview_path,
+            "crop_root": record.crop_root,
+            "notes": record.notes,
+        }
         return {
             "data": data,
-            "valid_mask": torch.as_tensor(valid_mask, dtype=torch.uint8) if valid_mask is not None else None,
-            "bbox_source": torch.as_tensor(bbox_source, dtype=torch.uint8) if bbox_source is not None else None,
+            "valid_mask": torch.as_tensor(valid_mask, dtype=torch.float32) if valid_mask is not None else None,
+            "bbox_source": torch.as_tensor(bbox_source, dtype=torch.long) if bbox_source is not None else None,
             "bboxes": torch.as_tensor(bboxes, dtype=torch.float32) if bboxes is not None else None,
-            "frame_indices": torch.as_tensor(frame_indices, dtype=torch.int32) if frame_indices is not None else None,
+            "frame_indices": torch.as_tensor(frame_indices, dtype=torch.long) if frame_indices is not None else None,
             "label": label,
             "sample_id": record.sample_id,
             "video_id": record.video_id,
@@ -458,6 +527,7 @@ class RegionClipDataset(Dataset):
             "preview_path": record.preview_path,
             "crop_root": record.crop_root,
             "notes": record.notes,
+            "metadata": metadata,
         }
 
 
@@ -481,20 +551,7 @@ def region_collate_fn(batch: Sequence[dict[str, Any] | tuple[torch.Tensor, int]]
     output = {
         "data": torch.stack(data_tensors, dim=0),
         "labels": torch.as_tensor(labels, dtype=torch.long),
-        "metadata": [
-            {
-                "sample_id": item["sample_id"],
-                "video_id": item["video_id"],
-                "gloss": item["gloss"],
-                "class_id": int(item["class_id"]),
-                "split": item["split"],
-                "path": item["path"],
-                "preview_path": item["preview_path"],
-                "crop_root": item["crop_root"],
-                "notes": item["notes"],
-            }
-            for item in batch
-        ],
+        "metadata": [dict(item.get("metadata", {})) for item in batch],
     }
 
     if all(item.get("valid_mask") is not None for item in batch):
@@ -511,6 +568,7 @@ def region_collate_fn(batch: Sequence[dict[str, Any] | tuple[torch.Tensor, int]]
 __all__ = [
     "RegionClipDataset",
     "RegionSampleRecord",
+    "build_label_maps_from_manifest",
     "load_region_train_config",
     "region_collate_fn",
     "resolve_region_tensor_path",
