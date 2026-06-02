@@ -121,6 +121,8 @@ def _normalize_training_config(config: dict[str, Any], *, config_path: Path) -> 
     train_cfg = resolved.setdefault("train", {})
     logging_cfg = resolved.setdefault("logging", {})
     runtime = resolved.setdefault("runtime", {})
+    early_stopping_cfg = resolved.setdefault("early_stopping", {})
+    augmentation_cfg = resolved.setdefault("augmentation", {})
 
     experiment.setdefault("name", "regions-cnn-gru")
     experiment.setdefault("output_dir", f"outputs/regions/{experiment['name']}")
@@ -184,6 +186,35 @@ def _normalize_training_config(config: dict[str, Any], *, config_path: Path) -> 
     runtime.setdefault("limit_train", None)
     runtime.setdefault("limit_val", None)
     runtime.setdefault("limit_test", None)
+
+    early_stopping_cfg.setdefault("enabled", False)
+    early_stopping_cfg.setdefault("monitor", "val_top5")
+    early_stopping_cfg.setdefault(
+        "mode",
+        "min" if str(early_stopping_cfg.get("monitor", "")).strip().lower() == "val_loss" else "max",
+    )
+    early_stopping_cfg.setdefault("patience", 4)
+    early_stopping_cfg.setdefault("min_delta", 0.0)
+
+    augmentation_cfg.setdefault("enabled", False)
+    color_jitter_cfg = augmentation_cfg.setdefault("color_jitter", {})
+    color_jitter_cfg.setdefault("enabled", False)
+    color_jitter_cfg.setdefault("brightness", 0.2)
+    color_jitter_cfg.setdefault("contrast", 0.2)
+    color_jitter_cfg.setdefault("saturation", 0.15)
+    color_jitter_cfg.setdefault("hue", 0.05)
+    random_resized_crop_cfg = augmentation_cfg.setdefault("random_resized_crop", {})
+    random_resized_crop_cfg.setdefault("enabled", False)
+    random_resized_crop_cfg.setdefault("scale", [0.85, 1.0])
+    random_erasing_cfg = augmentation_cfg.setdefault("random_erasing", {})
+    random_erasing_cfg.setdefault("enabled", False)
+    random_erasing_cfg.setdefault("p", 0.15)
+    temporal_dropout_cfg = augmentation_cfg.setdefault("temporal_dropout", {})
+    temporal_dropout_cfg.setdefault("enabled", False)
+    temporal_dropout_cfg.setdefault("p", 0.10)
+    region_dropout_cfg = augmentation_cfg.setdefault("region_dropout", {})
+    region_dropout_cfg.setdefault("enabled", False)
+    region_dropout_cfg.setdefault("p", 0.10)
     return resolved
 
 
@@ -285,6 +316,7 @@ def resolve_training_config(config_path: Path, args: argparse.Namespace) -> dict
         raise ValueError("model.num_classes must match dataset.num_classes.")
     if len(resolved["dataset"]["region_order"]) != int(resolved["model"]["num_regions"]):
         raise ValueError("dataset.region_order length must match model.num_regions.")
+    _resolve_early_stopping_config(resolved)
     return resolved
 
 
@@ -505,26 +537,52 @@ def _write_training_outputs(
     write_dataframe_csv(pd.DataFrame(epoch_records), output_paths["train_log_csv"])
 
 
-def _resolve_monitor_metric(config: dict[str, Any]) -> tuple[str, str]:
-    """Resolve monitor metric names like ``val_top1`` to runtime keys."""
+def _resolve_metric_spec(metric_name: str) -> tuple[str, str]:
+    """Resolve metric names like ``val_top1`` to runtime keys plus modes."""
 
-    monitor_metric = str(config["train"].get("save_best_metric", "val_top1")).strip().lower()
     metric_mapping = {
         "val_top1": ("val/top1", "max"),
         "val_top5": ("val/top5", "max"),
         "val_top10": ("val/top10", "max"),
         "val_loss": ("val/loss", "min"),
     }
-    return metric_mapping.get(monitor_metric, ("val/top1", "max"))
+    return metric_mapping.get(str(metric_name).strip().lower(), ("val/top1", "max"))
 
 
-def _is_improved(current: float, best: float | None, *, mode: str) -> bool:
+def _resolve_monitor_metric(config: dict[str, Any]) -> tuple[str, str]:
+    """Resolve the checkpoint monitor metric from train config."""
+
+    monitor_metric = str(config["train"].get("save_best_metric", "val_top1")).strip().lower()
+    return _resolve_metric_spec(monitor_metric)
+
+
+def _resolve_early_stopping_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Resolve early stopping settings while preserving older configs."""
+
+    early_cfg = dict(config.get("early_stopping", {}))
+    enabled = bool(early_cfg.get("enabled", False))
+    monitor = str(early_cfg.get("monitor", "val_top5")).strip().lower()
+    metric_key, inferred_mode = _resolve_metric_spec(monitor)
+    mode = str(early_cfg.get("mode", inferred_mode)).strip().lower()
+    if mode not in {"min", "max"}:
+        raise ValueError("early_stopping.mode must be either 'min' or 'max'.")
+    return {
+        "enabled": enabled,
+        "monitor": monitor,
+        "metric_key": metric_key,
+        "mode": mode,
+        "patience": int(early_cfg.get("patience", 4)),
+        "min_delta": float(early_cfg.get("min_delta", 0.0)),
+    }
+
+
+def _is_improved(current: float, best: float | None, *, mode: str, min_delta: float = 0.0) -> bool:
     if best is None:
         return True
     if mode == "max":
-        return current > best
+        return current > (best + min_delta)
     if mode == "min":
-        return current < best
+        return current < (best - min_delta)
     raise ValueError(f"Unsupported monitor mode {mode!r}. Expected 'max' or 'min'.")
 
 
@@ -628,6 +686,20 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
     best_row: dict[str, Any] | None = None
     epoch_records: list[dict[str, Any]] = []
     monitor_metric, monitor_mode = _resolve_monitor_metric(resolved_config)
+    early_stopping_cfg = _resolve_early_stopping_config(resolved_config)
+    early_stopping_best_metric: float | None = None
+    early_stopping_best_epoch = 0
+    early_stopping_wait = 0
+    stopped_epoch: int | None = None
+
+    if early_stopping_cfg["enabled"]:
+        logger.info(
+            "Early stopping enabled | monitor=%s mode=%s patience=%s min_delta=%s",
+            early_stopping_cfg["monitor"],
+            early_stopping_cfg["mode"],
+            early_stopping_cfg["patience"],
+            early_stopping_cfg["min_delta"],
+        )
 
     try:
         total_epochs = int(resolved_config["train"]["epochs"])
@@ -742,6 +814,40 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
                     class_id_to_gloss=datasets["train"].id_to_gloss,
                 )
 
+            if early_stopping_cfg["enabled"]:
+                current_early_metric = float(flat_metrics[early_stopping_cfg["metric_key"]])
+                early_metric_improved = _is_improved(
+                    current_early_metric,
+                    early_stopping_best_metric,
+                    mode=early_stopping_cfg["mode"],
+                    min_delta=float(early_stopping_cfg["min_delta"]),
+                )
+                if early_metric_improved:
+                    early_stopping_best_metric = current_early_metric
+                    early_stopping_best_epoch = epoch
+                    early_stopping_wait = 0
+                else:
+                    early_stopping_wait += 1
+                    logger.info(
+                        "Early stopping wait %s/%s | monitor=%s current=%.4f best=%.4f",
+                        early_stopping_wait,
+                        early_stopping_cfg["patience"],
+                        early_stopping_cfg["monitor"],
+                        current_early_metric,
+                        0.0 if early_stopping_best_metric is None else early_stopping_best_metric,
+                    )
+                    if early_stopping_wait >= int(early_stopping_cfg["patience"]):
+                        stopped_epoch = epoch
+                        logger.info(
+                            "Early stopping triggered at epoch=%s | monitor=%s best_epoch=%s best_metric=%.4f patience=%s",
+                            stopped_epoch,
+                            early_stopping_cfg["monitor"],
+                            early_stopping_best_epoch,
+                            0.0 if early_stopping_best_metric is None else early_stopping_best_metric,
+                            early_stopping_cfg["patience"],
+                        )
+                        break
+
         if best_epoch <= 0:
             raise RuntimeError("Training finished without producing a best checkpoint.")
 
@@ -820,6 +926,29 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
                     "test": len(datasets["test"]),
                 },
             },
+            "early_stopping": {
+                "enabled": bool(early_stopping_cfg["enabled"]),
+                "monitor": str(early_stopping_cfg["monitor"]),
+                "mode": str(early_stopping_cfg["mode"]),
+                "patience": int(early_stopping_cfg["patience"]),
+                "min_delta": float(early_stopping_cfg["min_delta"]),
+                "stopped_epoch": int(stopped_epoch) if stopped_epoch is not None else None,
+                "best_epoch": int(early_stopping_best_epoch) if early_stopping_cfg["enabled"] else None,
+                "best_metric": (
+                    float(early_stopping_best_metric)
+                    if early_stopping_cfg["enabled"] and early_stopping_best_metric is not None
+                    else None
+                ),
+            },
+            "stopped_epoch": int(stopped_epoch) if stopped_epoch is not None else None,
+            "best_epoch": int(early_stopping_best_epoch) if early_stopping_cfg["enabled"] else None,
+            "best_metric": (
+                float(early_stopping_best_metric)
+                if early_stopping_cfg["enabled"] and early_stopping_best_metric is not None
+                else None
+            ),
+            "monitor": str(early_stopping_cfg["monitor"]) if early_stopping_cfg["enabled"] else None,
+            "patience": int(early_stopping_cfg["patience"]) if early_stopping_cfg["enabled"] else None,
             "wandb_run_url": getattr(wandb_run, "url", None),
         }
         _write_training_outputs(

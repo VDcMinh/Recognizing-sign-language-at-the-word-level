@@ -14,6 +14,10 @@ import torch
 from torch.utils.data import Dataset
 
 from slr.branches.regions.region_schema import DEFAULT_TENSOR_SHAPE, REGION_NAMES
+from slr.branches.regions.transforms import (
+    apply_region_clip_augmentation,
+    normalize_region_augmentation_config,
+)
 from slr.data.manifests import REGION_INPUT_MANIFEST_COLUMNS
 from slr.data.validation import require_columns
 from slr.utils.io import read_csv, read_yaml, remap_wlasl_path
@@ -260,6 +264,7 @@ def load_region_train_config(
             "num_workers": int(dataloader_cfg.get("num_workers", 0)),
             "pin_memory": bool(dataloader_cfg.get("pin_memory", False)),
         },
+        "augmentation": config.get("augmentation", {}),
     }
 
 
@@ -279,6 +284,7 @@ class RegionClipDataset(Dataset):
         dtype: Any = torch.float32,
         strict_shape_check: bool = True,
         strict_path_check: bool | None = None,
+        augmentation_config: dict[str, Any] | None = None,
         limit: int | None = None,
         logger=LOGGER,
     ) -> None:
@@ -293,6 +299,8 @@ class RegionClipDataset(Dataset):
         self.dtype = _coerce_torch_dtype(dtype)
         self.strict_shape_check = bool(strict_shape_check)
         self.strict_path_check = self.strict_shape_check if strict_path_check is None else bool(strict_path_check)
+        self.augmentation_config = normalize_region_augmentation_config(augmentation_config)
+        self.apply_augmentation = bool(self.augmentation_config["enabled"]) and self.split == "train"
         self.limit = limit
         self.logger = logger
 
@@ -350,6 +358,7 @@ class RegionClipDataset(Dataset):
             else return_metadata,
             dtype=dtype,
             strict_shape_check=bool(dataset_cfg.get("strict_shape_check", True)),
+            augmentation_config=resolved.get("augmentation"),
             limit=limit,
             logger=logger,
         )
@@ -492,11 +501,22 @@ class RegionClipDataset(Dataset):
         payload = self._load_region_tensor(record.tensor_path)
         data = torch.as_tensor(payload["data"].astype(np.float32) / 255.0, dtype=self.dtype)
         label = int(record.class_id)
+        valid_mask_tensor = (
+            torch.as_tensor(payload["valid_mask"], dtype=torch.float32)
+            if payload["valid_mask"] is not None
+            else None
+        )
+
+        if self.apply_augmentation:
+            data, valid_mask_tensor = apply_region_clip_augmentation(
+                data,
+                valid_mask=valid_mask_tensor,
+                config=self.augmentation_config,
+            )
 
         if not self.return_metadata:
             return data, label
 
-        valid_mask = payload["valid_mask"]
         bbox_source = payload["bbox_source"]
         bboxes = payload["bboxes"]
         frame_indices = payload["frame_indices"]
@@ -513,7 +533,7 @@ class RegionClipDataset(Dataset):
         }
         return {
             "data": data,
-            "valid_mask": torch.as_tensor(valid_mask, dtype=torch.float32) if valid_mask is not None else None,
+            "valid_mask": valid_mask_tensor,
             "bbox_source": torch.as_tensor(bbox_source, dtype=torch.long) if bbox_source is not None else None,
             "bboxes": torch.as_tensor(bboxes, dtype=torch.float32) if bboxes is not None else None,
             "frame_indices": torch.as_tensor(frame_indices, dtype=torch.long) if frame_indices is not None else None,

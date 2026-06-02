@@ -1,0 +1,94 @@
+experiment:
+  name: regions_cnn_gru_nslt300_small_reg_aug_ce
+  output_dir: outputs/regions/regions_cnn_gru_nslt300_small_reg_aug_ce
+  seed: 42
+
+dataset:
+  subset: nslt300
+  num_classes: 300
+  data_root: data/datasets/WLASL/branch_inputs/regions/rtmw_l
+  manifests:
+    train: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt300_train.csv
+    val: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt300_val.csv
+    test: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt300_test.csv
+  expected_shape: [3, 3, 64, 112, 112]
+  region_order: ["left_hand", "right_hand", "face"]
+  return_metadata: true
+  strict_shape_check: true
+
+model:
+  name: region_cnn_gru
+  num_classes: 300
+  num_regions: 3
+  in_channels: 3
+  clip_len: 64
+  crop_size: 112
+  cnn_feature_dim: 128
+  gru_hidden_size: 128
+  gru_num_layers: 1
+  bidirectional: true
+  dropout: 0.5
+  fusion: concat
+  use_valid_mask: true
+
+train:
+  epochs: 15
+  batch_size: 8
+  num_workers: 2
+  pin_memory: true
+  shuffle_train: true
+  device: auto
+  loss: cross_entropy
+  amp: false
+  grad_clip_norm: null
+  save_best_metric: val_top5
+  optimizer:
+    name: adamw
+    lr: 0.0001
+    weight_decay: 0.001
+  scheduler:
+    enabled: true
+    name: cosine
+    min_lr: 0.000001
+
+early_stopping:
+  enabled: true
+  monitor: val_top5
+  mode: max
+  patience: 4
+  min_delta: 0.0
+
+augmentation:
+  enabled: true
+  color_jitter:
+    enabled: true
+    brightness: 0.2
+    contrast: 0.2
+    saturation: 0.15
+    hue: 0.05
+  random_resized_crop:
+    enabled: true
+    scale: [0.85, 1.0]
+  random_erasing:
+    enabled: true
+    p: 0.15
+  temporal_dropout:
+    enabled: true
+    p: 0.10
+  region_dropout:
+    enabled: true
+    p: 0.10
+
+logging:
+  use_wandb: false
+  entity_env: WANDB_ENTITY
+  project: wlasl-regions
+  run_name: regions_cnn_gru_nslt300_small_reg_aug_ce
+  tags:
+    - nslt300
+    - regions
+    - region_cnn_gru
+    - small_reg
+    - augmentation
+    - cross_entropy
+  log_model: true
