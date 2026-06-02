@@ -49,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--epochs", type=int, default=None, help="Override train.epochs.")
     parser.add_argument("--batch-size", type=int, default=None, help="Override train.batch_size.")
     parser.add_argument("--lr", type=float, default=None, help="Override train.optimizer.lr.")
+    parser.add_argument("--weight-decay", type=float, default=None, help="Override train.optimizer.weight_decay.")
     parser.add_argument("--device", type=str, default=None, help="Override train.device.")
     parser.add_argument("--seed", type=int, default=None, help="Override experiment.seed.")
     parser.add_argument("--data-root", type=Path, default=None, help="Override dataset.data_root.")
@@ -249,6 +250,8 @@ def apply_cli_overrides(config: dict[str, Any], args: argparse.Namespace) -> dic
         resolved["train"]["batch_size"] = int(args.batch_size)
     if args.lr is not None:
         resolved["train"]["optimizer"]["lr"] = float(args.lr)
+    if args.weight_decay is not None:
+        resolved["train"]["optimizer"]["weight_decay"] = float(args.weight_decay)
     if args.device is not None:
         resolved["train"]["device"] = str(args.device)
     if args.seed is not None:
@@ -421,6 +424,15 @@ def _normalize_scheduler_config(train_cfg: dict[str, Any]) -> dict[str, Any]:
         "step_size": int(scheduler_cfg.get("step_size", 10)),
         "gamma": float(scheduler_cfg.get("gamma", 0.1)),
     }
+
+
+def _log_optimizer_config(logger, train_cfg: dict[str, Any]) -> None:
+    """Log the resolved optimizer configuration used for training."""
+
+    optimizer_cfg = dict(train_cfg.get("optimizer", {}))
+    logger.info("Optimizer: %s", str(optimizer_cfg.get("name", "adamw")).strip().lower())
+    logger.info("Learning rate: %s", float(optimizer_cfg.get("lr", 3e-4)))
+    logger.info("Weight decay: %s", float(optimizer_cfg.get("weight_decay", 1e-4)))
 
 
 def _validate_batch_shape(batch_data: torch.Tensor, expected_shape: tuple[int, ...]) -> None:
@@ -621,6 +633,7 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
 
     logger.info("Resolved run_name=%s device=%s", run_name, device)
     logger.info(_format_loss_log(resolved_config))
+    _log_optimizer_config(logger, resolved_config["train"])
     set_seed(int(resolved_config["experiment"]["seed"]))
 
     datasets = build_region_datasets(resolved_config)
