@@ -138,6 +138,8 @@ def _normalize_training_config(config: dict[str, Any], *, config_path: Path) -> 
     dataset.setdefault("num_classes", 100)
     dataset.setdefault("expected_shape", [3, 3, 64, 112, 112])
     dataset.setdefault("region_order", ["left_hand", "right_hand", "face"])
+    if dataset.get("active_regions") is None:
+        dataset["active_regions"] = list(dataset["region_order"])
     normalize_cfg = dataset.setdefault("normalize", {})
     dataset.setdefault("return_metadata", True)
     dataset.setdefault("strict_shape_check", True)
@@ -326,8 +328,9 @@ def resolve_training_config(config_path: Path, args: argparse.Namespace) -> dict
         raise ValueError("dataset crop size must match model.crop_size.")
     if int(resolved["model"]["num_classes"]) != int(resolved["dataset"]["num_classes"]):
         raise ValueError("model.num_classes must match dataset.num_classes.")
-    if len(resolved["dataset"]["region_order"]) != int(resolved["model"]["num_regions"]):
-        raise ValueError("dataset.region_order length must match model.num_regions.")
+    active_regions = resolved["dataset"].get("active_regions") or resolved["dataset"]["region_order"]
+    if len(active_regions) != int(resolved["model"]["num_regions"]):
+        raise ValueError("dataset.active_regions length must match model.num_regions.")
     _resolve_early_stopping_config(resolved)
     return resolved
 
@@ -942,6 +945,7 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
                 "num_classes": int(resolved_config["dataset"]["num_classes"]),
                 "expected_shape": list(expected_shape),
                 "region_order": list(resolved_config["dataset"]["region_order"]),
+                "active_regions": list(resolved_config["dataset"].get("active_regions", [])),
                 "normalize": dict(resolved_config["dataset"].get("normalize", {})),
                 "num_samples": {
                     "train": len(datasets["train"]),

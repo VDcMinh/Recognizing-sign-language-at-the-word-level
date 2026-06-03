@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 from torch.utils.data import DataLoader
 
-from slr.branches.regions.dataset import RegionClipDataset, region_collate_fn
+from slr.branches.regions.dataset import RegionClipDataset, load_region_train_config, region_collate_fn
 from slr.branches.regions.region_schema import (
     BBOX_SOURCE_BLACK_CROP_FAILED,
     BBOX_SOURCE_PREVIOUS_BBOX_FALLBACK,
@@ -23,9 +23,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Check region dataset loading, tensor shapes, and crop quality summaries."
     )
     parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Optional training config YAML. When provided, dataset settings are read from config.",
+    )
+    parser.add_argument(
         "--manifest",
         type=Path,
-        required=True,
+        default=None,
         help="Path to one region manifest CSV file.",
     )
     parser.add_argument(
@@ -45,6 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Print this many low-quality samples from the manifest ranking.",
+    )
+    parser.add_argument(
+        "--active-regions",
+        type=str,
+        default=None,
+        help="Optional comma-separated subset such as left_hand,right_hand.",
     )
     return parser
 
@@ -76,26 +88,52 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    manifest = pd.read_csv(args.manifest)
+    if args.config is None and args.manifest is None:
+        raise ValueError("Either --config or --manifest must be provided.")
+
+    if args.config is not None:
+        resolved_config = load_region_train_config(args.config)
+        if args.active_regions:
+            resolved_config["dataset"]["active_regions"] = [
+                part.strip() for part in str(args.active_regions).split(",") if part.strip()
+            ]
+        if args.data_root is not None:
+            resolved_config["dataset"]["data_root"] = args.data_root
+        manifest_path = Path(resolved_config["dataset"]["manifests"]["train"])
+        dataset = RegionClipDataset.from_config(
+            resolved_config,
+            split="train",
+            limit=args.limit,
+            return_metadata=True,
+        )
+    else:
+        active_regions = [part.strip() for part in str(args.active_regions).split(",") if part.strip()] if args.active_regions else None
+        manifest_path = Path(args.manifest)
+        dataset = RegionClipDataset(
+            manifest_path=manifest_path,
+            data_root=args.data_root,
+            limit=args.limit,
+            strict_shape_check=True,
+            return_metadata=True,
+            region_order=REGION_NAMES,
+            active_regions=active_regions,
+        )
+
+    manifest = pd.read_csv(manifest_path)
     ok_manifest = manifest.loc[manifest["status"] == "ok"].copy()
     error_manifest = manifest.loc[manifest["status"] != "ok"].copy()
 
-    dataset = RegionClipDataset(
-        manifest_path=args.manifest,
-        data_root=args.data_root,
-        limit=args.limit,
-        strict_shape_check=True,
-        return_metadata=True,
-    )
-
     print("== Dataset ==")
-    print(f"manifest path: {args.manifest}")
+    print(f"manifest path: {manifest_path}")
+    print(f"config path: {args.config or '<none>'}")
     print(f"data root: {args.data_root or '<none>'}")
     print(f"total samples: {len(manifest)}")
     print(f"ok samples: {len(ok_manifest)}")
     print(f"error samples: {len(error_manifest)}")
     print(f"resolved dataset samples: {len(dataset)}")
     print(f"expected_shape: {tuple(dataset.expected_shape)}")
+    print(f"region_order: {list(dataset.region_order)}")
+    print(f"active_regions: {list(dataset.active_regions)}")
     print()
 
     sample = dataset[0]
@@ -104,6 +142,7 @@ def main() -> int:
     print(f"gloss: {sample['gloss']}")
     print(f"label: {sample['label']}")
     print(f"data shape: {tuple(sample['data'].shape)}")
+    print(f"region_names: {sample.get('region_names', [])}")
     if sample["valid_mask"] is not None:
         print(f"valid_mask shape: {tuple(sample['valid_mask'].shape)}")
     if sample.get("bbox_source") is not None:
@@ -122,7 +161,7 @@ def main() -> int:
     print()
 
     print("== Region Quality Summary ==")
-    for region_name in REGION_NAMES:
+    for region_name in dataset.active_regions:
         print(f"{region_name} valid ratio avg: {_safe_mean(ok_manifest[f'{region_name}_valid_ratio']):.6f}")
         print(
             f"{region_name} black crop ratio avg: "

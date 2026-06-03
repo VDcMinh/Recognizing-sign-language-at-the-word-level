@@ -39,6 +39,42 @@ REQUIRED_DATASET_COLUMNS = (
 )
 
 
+def _normalize_region_name_list(
+    value: Any,
+    *,
+    default: Sequence[str] | None = None,
+) -> tuple[str, ...]:
+    """Normalize one region-name list from config or `.npz` metadata."""
+
+    if value is None:
+        return tuple(str(item).strip() for item in (default or ()))
+
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return tuple(str(item).strip() for item in (default or ()))
+        try:
+            parsed = ast.literal_eval(text)
+        except (SyntaxError, ValueError):
+            parsed = [part.strip() for part in text.split(",") if part.strip()]
+        value = parsed
+
+    if not isinstance(value, Sequence):
+        raise ValueError(f"Unsupported region list value: {value!r}.")
+
+    normalized: list[str] = []
+    for item in value:
+        if isinstance(item, bytes):
+            item = item.decode("utf-8")
+        name = str(item).strip()
+        if not name:
+            continue
+        normalized.append(name)
+    return tuple(normalized)
+
+
 @dataclass(frozen=True)
 class RegionSampleRecord:
     """Resolved manifest row used by :class:`RegionClipDataset`."""
@@ -258,6 +294,13 @@ def load_region_train_config(
             "num_classes": int(dataset_cfg.get("num_classes", 100)),
             "expected_shape": _parse_shape_value(dataset_cfg.get("expected_shape")) or DEFAULT_TENSOR_SHAPE,
             "manifests": resolved_manifests,
+            "region_order": list(_normalize_region_name_list(dataset_cfg.get("region_order"), default=REGION_NAMES)),
+            "active_regions": list(
+                _normalize_region_name_list(
+                    dataset_cfg.get("active_regions"),
+                    default=_normalize_region_name_list(dataset_cfg.get("region_order"), default=REGION_NAMES),
+                )
+            ),
             "normalize": normalize_region_normalization_config(dataset_cfg.get("normalize")),
             "return_metadata": bool(dataset_cfg.get("return_metadata", True)),
             "strict_shape_check": bool(dataset_cfg.get("strict_shape_check", True)),
@@ -283,6 +326,8 @@ class RegionClipDataset(Dataset):
         split: str | None = None,
         expected_shape: Sequence[int] | str | None = None,
         num_classes: int | None = None,
+        region_order: Sequence[str] | None = None,
+        active_regions: Sequence[str] | None = None,
         return_metadata: bool = True,
         dtype: Any = torch.float32,
         strict_shape_check: bool = True,
@@ -299,6 +344,8 @@ class RegionClipDataset(Dataset):
         parsed_expected_shape = _parse_shape_value(expected_shape) if expected_shape is not None else None
         self.expected_shape = parsed_expected_shape or DEFAULT_TENSOR_SHAPE
         self.num_classes = int(num_classes) if num_classes is not None else None
+        self.region_order = _normalize_region_name_list(region_order, default=REGION_NAMES) or tuple(REGION_NAMES)
+        self.active_regions = _normalize_region_name_list(active_regions, default=self.region_order) or self.region_order
         self.return_metadata = bool(return_metadata)
         self.dtype = _coerce_torch_dtype(dtype)
         self.strict_shape_check = bool(strict_shape_check)
@@ -313,6 +360,21 @@ class RegionClipDataset(Dataset):
             raise ValueError(f"Unsupported split: {split!r}. Expected one of {ALLOWED_SPLITS}.")
         if self.num_classes is not None and self.num_classes <= 0:
             raise ValueError("num_classes must be positive when provided.")
+        if len(self.region_order) == 0:
+            raise ValueError("region_order must contain at least one region.")
+        if len(self.active_regions) == 0:
+            raise ValueError("active_regions must contain at least one region.")
+        missing_regions = [name for name in self.active_regions if name not in self.region_order]
+        if missing_regions:
+            raise ValueError(
+                "active_regions contains names not present in region_order: "
+                f"{missing_regions}. region_order={list(self.region_order)}"
+            )
+        if int(self.expected_shape[0]) != len(self.active_regions):
+            raise ValueError(
+                f"expected_shape[0]={self.expected_shape[0]} must match the number of active regions "
+                f"({len(self.active_regions)})."
+            )
 
         self.manifest = self._load_manifest()
         self.id_to_gloss, self.gloss_to_id = build_label_maps_from_manifest(self.manifest, logger=self.logger)
@@ -358,6 +420,8 @@ class RegionClipDataset(Dataset):
             split=dataset_split,
             expected_shape=dataset_cfg.get("expected_shape"),
             num_classes=dataset_cfg.get("num_classes"),
+            region_order=dataset_cfg.get("region_order"),
+            active_regions=dataset_cfg.get("active_regions"),
             return_metadata=dataset_cfg.get("return_metadata", True)
             if return_metadata is None
             else return_metadata,
@@ -412,14 +476,54 @@ class RegionClipDataset(Dataset):
         manifest_shape = _parse_shape_value(tensor_shape_text)
         if manifest_shape is None:
             return
-        if tuple(manifest_shape) != tuple(self.expected_shape):
+        if not self._is_supported_tensor_shape(tuple(manifest_shape)):
             message = (
                 f"Manifest tensor_shape {manifest_shape} does not match expected_shape "
-                f"{self.expected_shape} for sample_id={row.get('sample_id')}."
+                f"{self.expected_shape} or raw region_order shape {self._raw_expected_shape()} "
+                f"for sample_id={row.get('sample_id')}."
             )
             if self.strict_shape_check:
                 raise ValueError(message)
             self.logger.warning(message)
+
+    def _raw_expected_shape(self) -> tuple[int, ...]:
+        """Return the expected raw tensor shape before active-region slicing."""
+
+        return (len(self.region_order),) + tuple(int(value) for value in self.expected_shape[1:])
+
+    def _is_supported_tensor_shape(self, shape: tuple[int, ...]) -> bool:
+        """Return whether one tensor shape matches raw or sliced expectations."""
+
+        return shape == tuple(self.expected_shape) or shape == self._raw_expected_shape()
+
+    def _resolve_payload_region_order(self, payload_region_names: np.ndarray | None) -> tuple[str, ...]:
+        """Resolve region order from payload metadata or config defaults."""
+
+        resolved = _normalize_region_name_list(payload_region_names, default=self.region_order)
+        if not resolved:
+            resolved = self.region_order
+        return resolved
+
+    def _slice_payload_to_active_regions(self, payload: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """Slice payload tensors to the configured active-region subset."""
+
+        payload_region_order = self._resolve_payload_region_order(payload.get("region_names"))
+        region_to_index = {name: index for index, name in enumerate(payload_region_order)}
+        missing_regions = [name for name in self.active_regions if name not in region_to_index]
+        if missing_regions:
+            raise ValueError(
+                "Requested active_regions are missing from payload region names. "
+                f"missing={missing_regions} payload_region_order={list(payload_region_order)}"
+            )
+
+        region_indices = [int(region_to_index[name]) for name in self.active_regions]
+        sliced_payload: dict[str, np.ndarray] = dict(payload)
+        for key in ("data", "valid_mask", "bbox_source", "bboxes"):
+            value = payload.get(key)
+            if value is not None:
+                sliced_payload[key] = value[region_indices, ...]
+        sliced_payload["region_names"] = np.asarray(self.active_regions, dtype=object)
+        return sliced_payload
 
     def _build_records(self) -> list[RegionSampleRecord]:
         """Resolve usable records from the filtered manifest."""
@@ -487,10 +591,12 @@ class RegionClipDataset(Dataset):
             bbox_source = np.asarray(payload["bbox_source"], dtype=np.uint8) if "bbox_source" in payload else None
             bboxes = np.asarray(payload["bboxes"], dtype=np.float32) if "bboxes" in payload else None
             frame_indices = np.asarray(payload["frame_indices"], dtype=np.int32) if "frame_indices" in payload else None
+            region_names = np.asarray(payload["region_names"]) if "region_names" in payload else None
 
-        if self.strict_shape_check and tuple(data.shape) != tuple(self.expected_shape):
+        if self.strict_shape_check and not self._is_supported_tensor_shape(tuple(data.shape)):
             raise ValueError(
-                f"Region tensor shape mismatch for {path}: expected {self.expected_shape}, got {tuple(data.shape)}."
+                f"Region tensor shape mismatch for {path}: expected sliced shape {self.expected_shape} "
+                f"or raw shape {self._raw_expected_shape()}, got {tuple(data.shape)}."
             )
         return {
             "data": data,
@@ -498,6 +604,7 @@ class RegionClipDataset(Dataset):
             "bbox_source": bbox_source,
             "bboxes": bboxes,
             "frame_indices": frame_indices,
+            "region_names": region_names,
         }
 
     def __getitem__(self, index: int) -> dict[str, Any] | tuple[torch.Tensor, int]:
@@ -505,6 +612,12 @@ class RegionClipDataset(Dataset):
 
         record = self.records[index]
         payload = self._load_region_tensor(record.tensor_path)
+        payload = self._slice_payload_to_active_regions(payload)
+        if self.strict_shape_check and tuple(payload["data"].shape) != tuple(self.expected_shape):
+            raise ValueError(
+                f"Sliced region tensor shape mismatch for {record.tensor_path}: expected {self.expected_shape}, "
+                f"got {tuple(payload['data'].shape)}."
+            )
         data = torch.as_tensor(payload["data"].astype(np.float32) / 255.0, dtype=self.dtype)
         label = int(record.class_id)
         valid_mask_tensor = (
@@ -540,6 +653,8 @@ class RegionClipDataset(Dataset):
             "preview_path": record.preview_path,
             "crop_root": record.crop_root,
             "notes": record.notes,
+            "region_order": list(self.region_order),
+            "active_regions": list(self.active_regions),
         }
         return {
             "data": data,
@@ -557,6 +672,7 @@ class RegionClipDataset(Dataset):
             "preview_path": record.preview_path,
             "crop_root": record.crop_root,
             "notes": record.notes,
+            "region_names": list(self.active_regions),
             "metadata": metadata,
         }
 
