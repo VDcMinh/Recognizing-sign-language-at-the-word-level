@@ -8,6 +8,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
+
 
 def normalize_uint8(image: np.ndarray) -> np.ndarray:
     """Scale uint8 images to the ``[0, 1]`` range."""
@@ -19,6 +22,48 @@ def normalize_region_clip_uint8(clip: np.ndarray) -> np.ndarray:
     """Scale a region clip tensor from ``uint8`` to ``float32`` in ``[0, 1]``."""
 
     return clip.astype(np.float32) / 255.0
+
+
+def normalize_region_normalization_config(config: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize one optional dataset normalization config block."""
+
+    raw = dict(config or {})
+    normalize_type = str(raw.get("type", "none")).strip().lower()
+    if normalize_type in {"", "none", "identity", "disabled"}:
+        return {
+            "enabled": False,
+            "type": "none",
+        }
+    if normalize_type == "imagenet":
+        return {
+            "enabled": True,
+            "type": "imagenet",
+            "mean": list(raw.get("mean", IMAGENET_MEAN)),
+            "std": list(raw.get("std", IMAGENET_STD)),
+        }
+    raise ValueError(f"Unsupported dataset normalize.type: {normalize_type!r}.")
+
+
+def apply_region_dataset_normalization(
+    data: torch.Tensor,
+    *,
+    config: dict[str, Any] | None = None,
+) -> torch.Tensor:
+    """Apply dataset-level normalization while preserving ``(R, C, T, H, W)``."""
+
+    normalized = normalize_region_normalization_config(config)
+    if not normalized["enabled"]:
+        return data
+    if data.ndim != 5:
+        raise ValueError(f"Region normalization expects (R, C, T, H, W), got {tuple(data.shape)}.")
+
+    mean = data.new_tensor(normalized["mean"]).view(1, -1, 1, 1, 1)
+    std = data.new_tensor(normalized["std"]).view(1, -1, 1, 1, 1)
+    if int(data.shape[1]) != int(mean.shape[1]):
+        raise ValueError(
+            f"Normalization channel count mismatch. data.shape[1]={data.shape[1]} mean={normalized['mean']}."
+        )
+    return (data - mean) / std
 
 
 def normalize_region_augmentation_config(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -292,7 +337,9 @@ def _hsv_to_rgb(frames: torch.Tensor) -> torch.Tensor:
 
 
 __all__ = [
+    "apply_region_dataset_normalization",
     "apply_region_clip_augmentation",
+    "normalize_region_normalization_config",
     "normalize_region_augmentation_config",
     "normalize_region_clip_uint8",
     "normalize_uint8",

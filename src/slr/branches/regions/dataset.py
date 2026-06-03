@@ -15,7 +15,9 @@ from torch.utils.data import Dataset
 
 from slr.branches.regions.region_schema import DEFAULT_TENSOR_SHAPE, REGION_NAMES
 from slr.branches.regions.transforms import (
+    apply_region_dataset_normalization,
     apply_region_clip_augmentation,
+    normalize_region_normalization_config,
     normalize_region_augmentation_config,
 )
 from slr.data.manifests import REGION_INPUT_MANIFEST_COLUMNS
@@ -256,6 +258,7 @@ def load_region_train_config(
             "num_classes": int(dataset_cfg.get("num_classes", 100)),
             "expected_shape": _parse_shape_value(dataset_cfg.get("expected_shape")) or DEFAULT_TENSOR_SHAPE,
             "manifests": resolved_manifests,
+            "normalize": normalize_region_normalization_config(dataset_cfg.get("normalize")),
             "return_metadata": bool(dataset_cfg.get("return_metadata", True)),
             "strict_shape_check": bool(dataset_cfg.get("strict_shape_check", True)),
         },
@@ -285,6 +288,7 @@ class RegionClipDataset(Dataset):
         strict_shape_check: bool = True,
         strict_path_check: bool | None = None,
         augmentation_config: dict[str, Any] | None = None,
+        normalization_config: dict[str, Any] | None = None,
         limit: int | None = None,
         logger=LOGGER,
     ) -> None:
@@ -300,6 +304,7 @@ class RegionClipDataset(Dataset):
         self.strict_shape_check = bool(strict_shape_check)
         self.strict_path_check = self.strict_shape_check if strict_path_check is None else bool(strict_path_check)
         self.augmentation_config = normalize_region_augmentation_config(augmentation_config)
+        self.normalization_config = normalize_region_normalization_config(normalization_config)
         self.apply_augmentation = bool(self.augmentation_config["enabled"]) and self.split == "train"
         self.limit = limit
         self.logger = logger
@@ -359,6 +364,7 @@ class RegionClipDataset(Dataset):
             dtype=dtype,
             strict_shape_check=bool(dataset_cfg.get("strict_shape_check", True)),
             augmentation_config=resolved.get("augmentation"),
+            normalization_config=dataset_cfg.get("normalize"),
             limit=limit,
             logger=logger,
         )
@@ -513,6 +519,10 @@ class RegionClipDataset(Dataset):
                 valid_mask=valid_mask_tensor,
                 config=self.augmentation_config,
             )
+        data = apply_region_dataset_normalization(
+            data,
+            config=self.normalization_config,
+        )
 
         if not self.return_metadata:
             return data, label

@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Create the CLI parser for regions baseline training."""
 
     parser = argparse.ArgumentParser(
-        description="Train a RegionCNNGRU baseline on local region clip tensors."
+        description="Train a regions baseline on local region clip tensors."
     )
     parser.add_argument("--config", type=Path, required=True, help="Training config YAML.")
     parser.add_argument("--output-dir", type=Path, default=None, help="Override experiment.output_dir.")
@@ -125,7 +125,7 @@ def _normalize_training_config(config: dict[str, Any], *, config_path: Path) -> 
     early_stopping_cfg = resolved.setdefault("early_stopping", {})
     augmentation_cfg = resolved.setdefault("augmentation", {})
 
-    experiment.setdefault("name", "regions-cnn-gru")
+    experiment.setdefault("name", "regions-resnet18-gru")
     experiment.setdefault("output_dir", f"outputs/regions/{experiment['name']}")
     experiment.setdefault("monitor_metric", train_cfg.get("save_best_metric", "val_top1"))
     experiment.setdefault("monitor_mode", "max")
@@ -138,25 +138,34 @@ def _normalize_training_config(config: dict[str, Any], *, config_path: Path) -> 
     dataset.setdefault("num_classes", 100)
     dataset.setdefault("expected_shape", [3, 3, 64, 112, 112])
     dataset.setdefault("region_order", ["left_hand", "right_hand", "face"])
+    normalize_cfg = dataset.setdefault("normalize", {})
     dataset.setdefault("return_metadata", True)
     dataset.setdefault("strict_shape_check", True)
     manifests = dataset.setdefault("manifests", {})
     for split in ("train", "val", "test"):
         manifests.setdefault(split, "")
 
-    model.setdefault("name", "region_cnn_gru")
+    model.setdefault("name", "region_resnet18_gru")
     model.setdefault("num_classes", int(dataset.get("num_classes", 100)))
     model.setdefault("num_regions", int(dataset.get("expected_shape", [3])[0]))
     model.setdefault("in_channels", int(dataset.get("expected_shape", [3, 3])[1]))
     model.setdefault("clip_len", int(dataset.get("expected_shape", [3, 3, 64])[2]))
     model.setdefault("crop_size", int(dataset.get("expected_shape", [3, 3, 64, 112, 112])[3]))
     model.setdefault("cnn_feature_dim", 256)
-    model.setdefault("gru_hidden_size", 256)
+    model.setdefault("pretrained", True)
+    model.setdefault("freeze_encoder", True)
+    model.setdefault("encoder_name", "resnet18")
+    model.setdefault("encoder_feature_dim", 512)
+    model.setdefault("gru_hidden_size", 128)
     model.setdefault("gru_num_layers", 1)
     model.setdefault("bidirectional", True)
-    model.setdefault("dropout", 0.3)
+    model.setdefault("dropout", 0.5)
     model.setdefault("fusion", "concat")
     model.setdefault("use_valid_mask", True)
+    normalize_cfg.setdefault(
+        "type",
+        "imagenet" if str(model.get("name", "")).strip().lower() == "region_resnet18_gru" else "none",
+    )
 
     train_cfg.setdefault("epochs", 30)
     train_cfg.setdefault("batch_size", 8)
@@ -933,11 +942,24 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
                 "num_classes": int(resolved_config["dataset"]["num_classes"]),
                 "expected_shape": list(expected_shape),
                 "region_order": list(resolved_config["dataset"]["region_order"]),
+                "normalize": dict(resolved_config["dataset"].get("normalize", {})),
                 "num_samples": {
                     "train": len(datasets["train"]),
                     "val": len(datasets["val"]),
                     "test": len(datasets["test"]),
                 },
+            },
+            "model": {
+                "name": str(resolved_config["model"]["name"]),
+                "pretrained": bool(resolved_config["model"].get("pretrained", False)),
+                "freeze_encoder": bool(resolved_config["model"].get("freeze_encoder", False)),
+                "encoder_name": str(resolved_config["model"].get("encoder_name", "")),
+                "encoder_feature_dim": int(resolved_config["model"].get("encoder_feature_dim", 0)),
+                "gru_hidden_size": int(resolved_config["model"].get("gru_hidden_size", 0)),
+                "gru_num_layers": int(resolved_config["model"].get("gru_num_layers", 0)),
+                "bidirectional": bool(resolved_config["model"].get("bidirectional", False)),
+                "fusion": str(resolved_config["model"].get("fusion", "")),
+                "use_valid_mask": bool(resolved_config["model"].get("use_valid_mask", False)),
             },
             "early_stopping": {
                 "enabled": bool(early_stopping_cfg["enabled"]),
