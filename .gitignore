@@ -136,4 +136,16 @@ data/datasets/WLASL/index/**/*.log
 outputs/
 packaging_outputs/
 
+# ============================================================
+# UI demo artifacts
+# ============================================================
+UI/checkpoints/**/*.pt
+UI/checkpoints/**/*.pth
+UI/outputs/uploads/*
+!UI/outputs/uploads/.gitkeep
+UI/outputs/predictions/*
+!UI/outputs/predictions/.gitkeep
+UI/outputs/logs/*
+!UI/outputs/logs/.gitkeep
+
 
