@@ -134,8 +134,4 @@ data/datasets/WLASL/index/**/*.log
 !data/datasets/WLASL/index/**/.gitkeep
 
 outputs/
-artifacts/fusion/**/*.pt
-artifacts/fusion/**/*.pth
-artifacts/fusion/**/*.ckpt
-artifacts/fusion/**/logits/*.npy
-artifacts/fusion/**/logits/*.npz
+
