@@ -1,5 +1,5 @@
 experiment:
-  name: sel27-stgcnpp-ce-001
+  name: sel31-stgcnpp-ce-001
   seed: 42
   output_root: outputs/skeleton
   monitor_metric: val/top1
@@ -10,13 +10,13 @@ dataset:
   name: WLASL
   subset: nslt100
   data_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l
-  keypoint_set: selected_27
+  keypoint_set: selected_31
   num_classes: 100
-  expected_shape: [3, 150, 27, 1]
+  expected_shape: [3, 150, 31, 1]
   manifests:
-    train: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_27_train.csv
-    val: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_27_val.csv
-    test: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_27_test.csv
+    train: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_31_train.csv
+    val: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_31_val.csv
+    test: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_31_test.csv
   return_metadata: true
   strict_shape_check: true
 
@@ -27,7 +27,7 @@ dataloader:
   shuffle_train: true
 
 graph:
-  layout: selected_27
+  layout: selected_31
   strategy: spatial
   add_self_links: true
   normalize_adjacency: true
@@ -35,7 +35,7 @@ graph:
 model:
   name: stgcnpp
   in_channels: 3
-  num_nodes: 27
+  num_nodes: 31
   num_classes: 100
   base_channels: 64
   dropout: 0.5
@@ -60,10 +60,10 @@ logging:
   use_wandb: true
   entity_env: WANDB_ENTITY
   project: wlasl-skeleton
-  run_name: sel27-stgcnpp-ce-001
+  run_name: sel31-stgcnpp-ce-001
   tags:
     - nslt100
-    - selected_27
+    - selected_31
     - stgcnpp
     - cross_entropy
   log_model: true

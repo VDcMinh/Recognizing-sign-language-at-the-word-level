@@ -134,18 +134,6 @@ data/datasets/WLASL/index/**/*.log
 !data/datasets/WLASL/index/**/.gitkeep
 
 outputs/
+packaging_outputs/
 
-# Nhưng vẫn cho Git đi vào các folder cha cần thiết
-!data/datasets/WLASL/
-!data/datasets/WLASL/branch_inputs/
-!data/datasets/WLASL/branch_inputs/skeleton/
-!data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/
-!data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/
 
-!data/datasets/WLASL/branch_inputs/regions/
-!data/datasets/WLASL/branch_inputs/regions/rtmw_l/
-!data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/
-
-# Upload toàn bộ file bên trong manifests
-!data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/**
-!data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/** 
