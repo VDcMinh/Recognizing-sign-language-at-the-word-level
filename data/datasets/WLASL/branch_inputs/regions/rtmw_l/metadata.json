@@ -1,0 +1,43 @@
+{
+  "dataset": "WLASL",
+  "subset": "nslt300",
+  "pose_backend": "rtmw_l",
+  "pose_layout": "wholebody_133",
+  "regions": [
+    "left_hand",
+    "right_hand",
+    "face"
+  ],
+  "tensor_format": "R,C,T,H,W",
+  "num_regions": 3,
+  "num_channels": 3,
+  "clip_len": 64,
+  "crop_size": 112,
+  "image_dtype": "uint8",
+  "coordinate_source": "standardized_frames",
+  "crop_source": "wholebody_133_keypoints",
+  "bbox_source_codes": {
+    "0": "black_crop_failed",
+    "1": "current_keypoints",
+    "2": "previous_bbox_fallback"
+  },
+  "overwrite": true,
+  "hand_policy": {
+    "conf_threshold": 0.2,
+    "min_points": 5,
+    "margin": 1.7,
+    "max_bbox_size_ratio": 0.4,
+    "min_bbox_size_px": 12.0,
+    "max_consecutive_fallback": 3
+  },
+  "face_policy": {
+    "conf_threshold": 0.2,
+    "min_face_points": 8,
+    "min_anchor_points": 2,
+    "margin": 1.45,
+    "fallback_anchor_margin": 2.2,
+    "max_bbox_size_ratio": 0.7,
+    "min_bbox_size_px": 24.0,
+    "max_consecutive_fallback": 5
+  }
+}
