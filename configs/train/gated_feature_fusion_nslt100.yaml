@@ -1,0 +1,82 @@
+dataset:
+  subset: nslt100
+  num_classes: 100
+
+  skeleton:
+    data_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l
+    keypoint_set: selected_31
+    expected_shape: [3, 150, 31, 1]
+    manifests:
+      train: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_31_train.csv
+      val: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_31_val.csv
+      test: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt100_selected_31_test.csv
+    return_metadata: true
+    strict_shape_check: true
+
+  regions:
+    data_root: data/datasets/WLASL/branch_inputs/regions/rtmw_l
+    expected_shape: [3, 3, 64, 112, 112]
+    region_order: [left_hand, right_hand, face]
+    active_regions: [left_hand, right_hand, face]
+    manifests:
+      train: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt100_train.csv
+      val: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt100_val.csv
+      test: data/datasets/WLASL/branch_inputs/regions/rtmw_l/manifests/nslt100_test.csv
+    normalize:
+      type: imagenet
+    return_metadata: true
+    strict_shape_check: true
+
+dataloader:
+  batch_size: 4
+  num_workers: 0
+  pin_memory: false
+  shuffle: false
+
+skeleton_branch:
+  config_path: configs/train/skeleton_selected_31_stgcnpp.yaml
+  checkpoint: checkpoints/models/skeleton/best.pt
+  graph:
+    layout: selected_31
+    strategy: spatial
+    add_self_links: true
+    normalize_adjacency: true
+  model:
+    name: stgcnpp
+    in_channels: 3
+    num_nodes: 31
+    num_classes: 100
+    base_channels: 64
+    dropout: 0.5
+
+regions_branch:
+  config_path: configs/train/regions_resnet18_gru_nslt100.yaml
+  checkpoint: checkpoints/models/regions/best.pt
+  model:
+    name: region_resnet18_gru
+    num_classes: 100
+    num_regions: 3
+    in_channels: 3
+    clip_len: 64
+    crop_size: 112
+    pretrained: false
+    freeze_encoder: true
+    encoder_name: resnet18
+    encoder_feature_dim: 512
+    gru_hidden_size: 128
+    gru_num_layers: 1
+    bidirectional: true
+    dropout: 0.5
+    fusion: concat
+    use_valid_mask: true
+
+fusion_model:
+  name: gated_feature_fusion
+  hidden_dim: 256
+  proj_dropout: 0.2
+  classifier_dropout: 0.5
+  freeze_skeleton: true
+  freeze_regions: true
+
+runtime:
+  device: auto

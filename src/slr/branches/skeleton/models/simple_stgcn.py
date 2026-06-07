@@ -165,12 +165,11 @@ class SimpleSTGCN(nn.Module):
                 ),
             ]
         )
-        self.head = nn.Sequential(
-            nn.Dropout(self.dropout_rate),
-            nn.Linear(self.hidden_channels * 2, self.num_classes),
-        )
+        self.feature_dim = self.hidden_channels * 2
+        self.feature_dropout = nn.Dropout(self.dropout_rate)
+        self.classifier = nn.Linear(self.feature_dim, self.num_classes)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _forward_backbone(self, x: torch.Tensor) -> torch.Tensor:
         if x.ndim != 5:
             raise ValueError(
                 f"Expected input with shape (N, C, T, V, M), got {tuple(x.shape)}."
@@ -198,5 +197,26 @@ class SimpleSTGCN(nn.Module):
         for block in self.blocks:
             x = block(x, self.A)
 
-        x = x.mean(dim=(2, 3))
-        return self.head(x)
+        return x.mean(dim=(2, 3))
+
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        """Return pooled skeleton features before the classifier."""
+
+        return self._forward_backbone(x)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        return_features: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        features = self.extract_features(x)
+        logits = self.classifier(self.feature_dropout(features))
+        if return_features:
+            return logits, features
+        return logits
+
+    @property
+    def output_dim(self) -> int:
+        """Return the pooled feature dimension before the classifier."""
+
+        return int(self.feature_dim)

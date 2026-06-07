@@ -272,10 +272,11 @@ class STGCNPP(nn.Module):
             )
             current_channels = int(out_channels)
         self.blocks = nn.ModuleList(blocks)
+        self.feature_dim = int(current_channels)
         self.feature_dropout = nn.Dropout(self.dropout_rate)
-        self.classifier = nn.Linear(current_channels, self.num_classes)
+        self.classifier = nn.Linear(self.feature_dim, self.num_classes)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _forward_backbone(self, x: torch.Tensor) -> torch.Tensor:
         if x.ndim != 5:
             raise ValueError(
                 f"Expected input with shape (N, C, T, V, M), got {tuple(x.shape)}."
@@ -310,8 +311,29 @@ class STGCNPP(nn.Module):
 
         x = x.mean(dim=(2, 3))
         x = x.view(batch_size, num_persons, -1).mean(dim=1)
-        x = self.feature_dropout(x)
-        return self.classifier(x)
+        return x
+
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        """Return pooled ST-GCN++ features before the classifier."""
+
+        return self._forward_backbone(x)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        return_features: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        features = self.extract_features(x)
+        logits = self.classifier(self.feature_dropout(features))
+        if return_features:
+            return logits, features
+        return logits
+
+    @property
+    def output_dim(self) -> int:
+        """Return the pooled feature dimension before the classifier."""
+
+        return int(self.feature_dim)
 
 
 __all__ = ["STGCNPP", "STGCNPPBlock", "SpatialGraphConv", "MultiScaleTemporalConv"]

@@ -175,12 +175,12 @@ class RegionCNNGRU(nn.Module):
         self.dropout = nn.Dropout(p=self.dropout_p)
         self.classifier = nn.Linear(classifier_input_dim, self.num_classes)
 
-    def forward(
+    def _fuse_region_features(
         self,
         data: torch.Tensor,
         valid_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Compute classification logits.
+        """Return fused region features before the classifier.
 
         Args:
             data: ``(N, R, C, T, H, W)``
@@ -222,11 +222,29 @@ class RegionCNNGRU(nn.Module):
 
         stacked_features = torch.stack(region_features, dim=1)
         if self.fusion == "concat":
-            fused = stacked_features.reshape(batch_size, self.num_regions * self.region_feature_dim)
-        else:
-            fused = stacked_features.mean(dim=1)
-        fused = self.dropout(fused)
-        return self.classifier(fused)
+            return stacked_features.reshape(batch_size, self.num_regions * self.region_feature_dim)
+        return stacked_features.mean(dim=1)
+
+    def extract_features(
+        self,
+        data: torch.Tensor,
+        valid_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Return fused region features before the classifier."""
+
+        return self._fuse_region_features(data, valid_mask=valid_mask)
+
+    def forward(
+        self,
+        data: torch.Tensor,
+        valid_mask: torch.Tensor | None = None,
+        return_features: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        features = self.extract_features(data, valid_mask=valid_mask)
+        logits = self.classifier(self.dropout(features))
+        if return_features:
+            return logits, features
+        return logits
 
     @property
     def output_dim(self) -> int:
@@ -235,6 +253,12 @@ class RegionCNNGRU(nn.Module):
         if self.fusion == "concat":
             return self.region_feature_dim * self.num_regions
         return self.region_feature_dim
+
+    @property
+    def feature_dim(self) -> int:
+        """Alias for the fused feature dimension before the classifier."""
+
+        return int(self.output_dim)
 
 
 def build_region_cnn_gru(model_cfg: dict[str, Any]) -> RegionCNNGRU:
