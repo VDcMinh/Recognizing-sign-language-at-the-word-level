@@ -1,3 +1,11 @@
+experiment:
+  name: gated-fusion-nslt100-sel31-ce-regions
+  seed: 42
+  output_root: outputs/fusion
+  monitor_metric: val/top5
+  monitor_mode: max
+  save_every_epoch: false
+
 dataset:
   subset: nslt100
   num_classes: 100
@@ -28,14 +36,14 @@ dataset:
     strict_shape_check: true
 
 dataloader:
-  batch_size: 4
-  num_workers: 0
-  pin_memory: false
-  shuffle: false
+  batch_size: 8
+  num_workers: 2
+  pin_memory: true
+  shuffle_train: true
 
 skeleton_branch:
-  config_path: configs/train/skeleton_selected_31_stgcnpp.yaml
-  checkpoint: checkpoints/models/skeleton/best.pt
+  config_path: checkpoints/models/skeleton/config_resolved.yaml
+  checkpoint_path: checkpoints/models/skeleton/best.pt
   graph:
     layout: selected_31
     strategy: spatial
@@ -50,8 +58,8 @@ skeleton_branch:
     dropout: 0.5
 
 regions_branch:
-  config_path: configs/train/regions_resnet18_gru_nslt100.yaml
-  checkpoint: checkpoints/models/regions/best.pt
+  config_path: checkpoints/models/regions/config_resolved.yaml
+  checkpoint_path: checkpoints/models/regions/best.pt
   model:
     name: region_resnet18_gru
     num_classes: 100
@@ -78,5 +86,38 @@ fusion_model:
   freeze_skeleton: true
   freeze_regions: true
 
-runtime:
+train:
+  epochs: 50
   device: auto
+  optimizer: adamw
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  loss: cross_entropy
+  grad_clip_norm: 1.0
+  amp: false
+
+early_stopping:
+  enabled: true
+  monitor_metric: val/top5
+  monitor_mode: max
+  patience: 8
+  min_delta: 0.0
+
+scheduler:
+  enabled: true
+  name: cosine
+  min_lr: 0.000001
+
+logging:
+  use_wandb: false
+  entity_env: WANDB_ENTITY
+  project: wlasl-gated-fusion-100
+  run_name: gated-fusion-nslt100-sel31-ce-regions
+  tags:
+    - nslt100
+    - gated_feature_fusion
+    - selected_31
+    - skeleton
+    - regions
+    - freeze_backbone
+  log_model: true

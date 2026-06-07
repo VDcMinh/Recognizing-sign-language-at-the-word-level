@@ -44,17 +44,29 @@ def _load_reference_branch_config(
     checkpoint_path: Path | None,
 ) -> tuple[dict[str, Any], str]:
     if config_path is not None:
-        if not config_path.exists():
-            raise FileNotFoundError(f"Referenced config does not exist: {config_path}")
-        return read_yaml(config_path), "config_path"
+        resolved_config_path = Path(config_path)
+        if resolved_config_path.exists():
+            return read_yaml(resolved_config_path), "config_path"
 
-    if checkpoint_path is not None and checkpoint_path.exists():
-        payload = torch.load(checkpoint_path, map_location="cpu")
+    if checkpoint_path is not None and Path(checkpoint_path).exists():
+        payload = torch.load(Path(checkpoint_path), map_location="cpu")
         checkpoint_cfg = payload.get("config")
         if isinstance(checkpoint_cfg, dict):
             return checkpoint_cfg, "checkpoint"
 
     return {}, "inline"
+
+
+def _resolve_branch_checkpoint_path(
+    branch_cfg: dict[str, Any],
+    *,
+    default_path: str,
+    project_root: Path,
+) -> Path | None:
+    return _resolve_path(
+        branch_cfg.get("checkpoint_path", branch_cfg.get("checkpoint", default_path)),
+        project_root=project_root,
+    )
 
 
 def load_gated_feature_fusion_config(
@@ -71,30 +83,53 @@ def load_gated_feature_fusion_config(
     )
     project_path = Path(project_root or paired_cfg["project_root"]).resolve()
 
+    experiment_cfg = dict(raw_config.get("experiment", {}))
     skeleton_branch_cfg = dict(raw_config.get("skeleton_branch", {}))
     regions_branch_cfg = dict(raw_config.get("regions_branch", {}))
     fusion_model_cfg = dict(raw_config.get("fusion_model", {}))
+    train_cfg = dict(raw_config.get("train", {}))
+    scheduler_cfg = dict(raw_config.get("scheduler", {}))
+    early_stopping_cfg = dict(raw_config.get("early_stopping", {}))
+    logging_cfg = dict(raw_config.get("logging", {}))
     runtime_cfg = dict(raw_config.get("runtime", {}))
 
     dataset_cfg = paired_cfg["dataset"]
+    dataloader_cfg = dict(paired_cfg["dataloader"])
+    if "shuffle_train" not in dataloader_cfg:
+        dataloader_cfg["shuffle_train"] = bool(
+            raw_config.get("dataloader", {}).get("shuffle_train", dataloader_cfg.get("shuffle", True))
+        )
+
     skeleton_dataset_cfg = dataset_cfg["skeleton"]
     regions_dataset_cfg = dataset_cfg["regions"]
+    resolved_device = str(
+        runtime_cfg.get("device", train_cfg.get("device", "auto"))
+    ).strip() or "auto"
 
     return {
         "config_path": Path(config_path),
         "project_root": project_path,
+        "experiment": experiment_cfg,
         "dataset": dataset_cfg,
-        "dataloader": paired_cfg["dataloader"],
+        "dataloader": dataloader_cfg,
+        "train": train_cfg,
+        "scheduler": scheduler_cfg,
+        "early_stopping": early_stopping_cfg,
+        "logging": logging_cfg,
         "runtime": {
-            "device": str(runtime_cfg.get("device", "auto")),
+            "device": resolved_device,
         },
         "skeleton_branch": {
             "config_path": _resolve_path(
-                skeleton_branch_cfg.get("config_path", "configs/train/skeleton_selected_31_stgcnpp.yaml"),
+                skeleton_branch_cfg.get(
+                    "config_path",
+                    "configs/train/skeleton_selected_31_stgcnpp.yaml",
+                ),
                 project_root=project_path,
             ),
-            "checkpoint": _resolve_path(
-                skeleton_branch_cfg.get("checkpoint", "checkpoints/models/skeleton/best.pt"),
+            "checkpoint_path": _resolve_branch_checkpoint_path(
+                skeleton_branch_cfg,
+                default_path="checkpoints/models/skeleton/best.pt",
                 project_root=project_path,
             ),
             "graph": dict(
@@ -112,11 +147,15 @@ def load_gated_feature_fusion_config(
         },
         "regions_branch": {
             "config_path": _resolve_path(
-                regions_branch_cfg.get("config_path", "configs/train/regions_resnet18_gru_nslt100.yaml"),
+                regions_branch_cfg.get(
+                    "config_path",
+                    "configs/train/regions_resnet18_gru_nslt100.yaml",
+                ),
                 project_root=project_path,
             ),
-            "checkpoint": _resolve_path(
-                regions_branch_cfg.get("checkpoint", "checkpoints/models/regions/best.pt"),
+            "checkpoint_path": _resolve_branch_checkpoint_path(
+                regions_branch_cfg,
+                default_path="checkpoints/models/regions/best.pt",
                 project_root=project_path,
             ),
             "model": dict(regions_branch_cfg.get("model", {})),
@@ -136,7 +175,7 @@ def _resolve_skeleton_branch_model_config(config: dict[str, Any]) -> tuple[dict[
     dataset_cfg = config["dataset"]["skeleton"]
     branch_cfg = config["skeleton_branch"]
     config_path = branch_cfg.get("config_path")
-    checkpoint_path = branch_cfg.get("checkpoint")
+    checkpoint_path = branch_cfg.get("checkpoint_path", branch_cfg.get("checkpoint"))
     reference_cfg, config_source = _load_reference_branch_config(
         config_path=config_path,
         checkpoint_path=checkpoint_path,
@@ -166,7 +205,7 @@ def _resolve_regions_branch_model_config(config: dict[str, Any]) -> tuple[dict[s
     dataset_cfg = config["dataset"]["regions"]
     branch_cfg = config["regions_branch"]
     config_path = branch_cfg.get("config_path")
-    checkpoint_path = branch_cfg.get("checkpoint")
+    checkpoint_path = branch_cfg.get("checkpoint_path", branch_cfg.get("checkpoint"))
     reference_cfg, config_source = _load_reference_branch_config(
         config_path=config_path,
         checkpoint_path=checkpoint_path,
@@ -193,7 +232,7 @@ def _resolve_regions_branch_model_config(config: dict[str, Any]) -> tuple[dict[s
     model_cfg.setdefault("fusion", "concat")
     model_cfg.setdefault("use_valid_mask", True)
 
-    if checkpoint_path is not None and checkpoint_path.exists():
+    if checkpoint_path is not None and Path(checkpoint_path).exists():
         model_cfg["pretrained"] = False
     return model_cfg, {"config_source": config_source}
 
@@ -221,7 +260,7 @@ def build_skeleton_branch_model(
     )
     model = build_skeleton_model(model_cfg, graph).to(device)
 
-    checkpoint_path = resolved["skeleton_branch"].get("checkpoint")
+    checkpoint_path = resolved["skeleton_branch"].get("checkpoint_path", resolved["skeleton_branch"].get("checkpoint"))
     checkpoint_loaded = False
     if checkpoint_path is not None and Path(checkpoint_path).exists():
         load_checkpoint(checkpoint_path, model, map_location=device)
@@ -255,7 +294,7 @@ def build_regions_branch_model(
     device = device or _select_device(resolved.get("runtime", {}).get("device"))
 
     model = build_region_model(model_cfg).to(device)
-    checkpoint_path = resolved["regions_branch"].get("checkpoint")
+    checkpoint_path = resolved["regions_branch"].get("checkpoint_path", resolved["regions_branch"].get("checkpoint"))
     checkpoint_loaded = False
     if checkpoint_path is not None and Path(checkpoint_path).exists():
         load_checkpoint(checkpoint_path, model, map_location=device)
