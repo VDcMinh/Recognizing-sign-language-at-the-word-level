@@ -1,0 +1,83 @@
+dataset:
+  name: WLASL
+  root: data/datasets/WLASL
+  subset: nslt1000
+
+input:
+  splits:
+    - train
+    - val
+    - test
+  pose_backend: rtmw_l
+  pose_layout: wholebody_133
+  standardized_frames_root: data/datasets/WLASL/standardized/frames
+  standardized_manifests_root: data/datasets/WLASL/standardized/manifests
+  pose_root: data/datasets/WLASL/pose/rtmw_l/nslt1000/wholebody_133
+  pose_backend_root: data/datasets/WLASL/pose/rtmw_l
+  pose_manifest_root: data/datasets/WLASL/pose/rtmw_l/nslt1000/manifests
+  require_standardized_status_ok: true
+  require_pose_status_ok: true
+
+output:
+  root: data/datasets/WLASL/branch_inputs/regions/rtmw_l
+  regions:
+    - left_hand
+    - right_hand
+    - face
+
+clip_len: 64
+crop_size: 112
+
+regions:
+  order:
+    - left_hand
+    - right_hand
+    - face
+
+hand:
+  conf_threshold: 0.2
+  min_points: 5
+  margin: 1.7
+  max_bbox_size_ratio: 0.40
+  min_bbox_size_px: 12
+  max_consecutive_fallback: 3
+
+face:
+  conf_threshold: 0.2
+  min_face_points: 8
+  min_anchor_points: 2
+  margin: 1.45
+  fallback_anchor_margin: 2.2
+  max_bbox_size_ratio: 0.70
+  min_bbox_size_px: 24
+  max_consecutive_fallback: 5
+
+preview:
+  frame_indices:
+    - 0
+    - 15
+    - 31
+    - 47
+    - 63
+
+outputs:
+  save_tensors: true
+  save_previews: true
+  save_crops: false
+
+options:
+  overwrite: true
+
+quality:
+  low_valid_ratio_thresholds:
+    left_hand: 0.5
+    right_hand: 0.5
+    face: 0.7
+  high_black_crop_ratio_thresholds:
+    left_hand: 0.3
+    right_hand: 0.3
+    face: 0.2
+  high_previous_fallback_ratio_thresholds:
+    left_hand: 0.4
+    right_hand: 0.4
+    face: 0.4

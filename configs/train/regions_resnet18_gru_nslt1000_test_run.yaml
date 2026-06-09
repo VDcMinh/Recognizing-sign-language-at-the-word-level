@@ -1,0 +1,39 @@
+experiment:
+  name: regions-resnet18-gru-nslt1000-test-run
+  output_dir: outputs/regions/regions-resnet18-gru-nslt1000-test-run
+  seed: 42
+
+dataset:
+  name: WLASL
+  subset: nslt1000
+  num_classes: 1000
+  data_root: data/datasets/WLASL/branch_inputs/regions/rtmw_l_test_run
+  manifests:
+    train: data/datasets/WLASL/branch_inputs/regions/rtmw_l_test_run/manifests/nslt1000_train.csv
+    val: data/datasets/WLASL/branch_inputs/regions/rtmw_l_test_run/manifests/nslt1000_val.csv
+    test: data/datasets/WLASL/branch_inputs/regions/rtmw_l_test_run/manifests/nslt1000_test.csv
+  expected_shape: [3, 3, 64, 112, 112]
+  region_order: ["left_hand", "right_hand", "face"]
+  active_regions: ["left_hand", "right_hand", "face"]
+  normalize:
+    type: imagenet
+  return_metadata: true
+  strict_shape_check: true
+
+model:
+  name: region_resnet18_gru
+  num_classes: 1000
+  num_regions: 3
+  in_channels: 3
+  clip_len: 64
+  crop_size: 112
+  pretrained: true
+  freeze_encoder: true
+  encoder_name: resnet18
+  encoder_feature_dim: 512
+  gru_hidden_size: 128
+  gru_num_layers: 1
+  bidirectional: true
+  dropout: 0.5
+  fusion: concat
+  use_valid_mask: true
