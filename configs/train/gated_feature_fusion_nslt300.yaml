@@ -113,7 +113,7 @@ scheduler:
   name: cosine
   min_lr: 1.0e-06
 logging:
-  use_wandb: true
+  use_wandb: false
   entity_env: WANDB_ENTITY
   project: wlasl-nslt300-gated-fusion
   run_name: gated-fusion-nslt300-sel31-ce-regions
