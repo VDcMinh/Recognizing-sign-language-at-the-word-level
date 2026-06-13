@@ -1,0 +1,88 @@
+experiment:
+  name: regions_resnet18_gru_nslt1000_incremental_kaggle
+  output_dir: /kaggle/working/outputs/regions/regions_resnet18_gru_nslt1000_incremental_kaggle
+  seed: 42
+  save_every_epoch: false
+
+dataset:
+  name: WLASL
+  subset: nslt1000
+  num_classes: 1000
+  data_root: /kaggle/working/regions_nslt1000_runtime
+  manifests:
+    train: /kaggle/working/regions_nslt1000_runtime/manifests/nslt1000_train.csv
+    val: /kaggle/working/regions_nslt1000_runtime/manifests/nslt1000_val.csv
+    test: /kaggle/working/regions_nslt1000_runtime/manifests/nslt1000_test.csv
+  expected_shape: [3, 3, 64, 112, 112]
+  region_order: ["left_hand", "right_hand", "face"]
+  active_regions: ["left_hand", "right_hand", "face"]
+  normalize:
+    type: imagenet
+  return_metadata: true
+  strict_shape_check: true
+
+model:
+  name: region_resnet18_gru
+  backbone: resnet18
+  num_classes: 1000
+  num_regions: 3
+  in_channels: 3
+  clip_len: 64
+  crop_size: 112
+  pretrained: true
+  freeze_encoder: true
+  encoder_name: resnet18
+  encoder_feature_dim: 512
+  gru_hidden_size: 128
+  gru_num_layers: 1
+  bidirectional: true
+  dropout: 0.5
+  fusion: concat
+  use_valid_mask: true
+
+train:
+  epochs: 50
+  batch_size: 8
+  num_workers: 2
+  pin_memory: true
+  shuffle_train: true
+  device: cuda
+  loss: cross_entropy
+  amp: false
+  grad_clip_norm: 1.0
+  save_best_metric: val_top5
+  optimizer:
+    name: adamw
+    lr: 0.0005
+    weight_decay: 0.001
+  scheduler:
+    enabled: true
+    name: cosine
+    min_lr: 0.000001
+
+early_stopping:
+  enabled: true
+  monitor: val_top5
+  mode: max
+  patience: 8
+  min_delta: 0.0
+
+augmentation:
+  enabled: false
+
+logging:
+  use_wandb: true
+  entity: vuducminh474-hanoi-university-of-science-and-technology
+  entity_env: WANDB_ENTITY
+  project: wlasl-region-1000
+  run_name: regions_resnet18_gru_nslt1000_incremental_kaggle
+  tags:
+    - nslt1000
+    - regions
+    - incremental
+    - kaggle
+    - resnet18
+    - gru
+    - left-hand
+    - right-hand
+    - face

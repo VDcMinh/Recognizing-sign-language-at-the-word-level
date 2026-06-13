@@ -160,17 +160,38 @@ def main() -> int:
     print(f"unique labels: {int(pd.to_numeric(class_ids, errors='coerce').nunique()) if not class_ids.empty else 0}")
     print()
 
+    quality_columns = {
+        "valid_ratio": [f"{region_name}_valid_ratio" for region_name in dataset.active_regions],
+        "black_crop_ratio": [f"{region_name}_black_crop_ratio" for region_name in dataset.active_regions],
+        "previous_fallback_ratio": [
+            f"{region_name}_previous_fallback_ratio" for region_name in dataset.active_regions
+        ],
+    }
+    missing_quality_columns = sorted(
+        {
+            column_name
+            for column_group in quality_columns.values()
+            for column_name in column_group
+            if column_name not in ok_manifest.columns
+        }
+    )
     print("== Region Quality Summary ==")
-    for region_name in dataset.active_regions:
-        print(f"{region_name} valid ratio avg: {_safe_mean(ok_manifest[f'{region_name}_valid_ratio']):.6f}")
+    if missing_quality_columns:
         print(
-            f"{region_name} black crop ratio avg: "
-            f"{_safe_mean(ok_manifest[f'{region_name}_black_crop_ratio']):.6f}"
+            "quality summary skipped: manifest does not include columns "
+            + ", ".join(missing_quality_columns)
         )
-        print(
-            f"{region_name} previous fallback ratio avg: "
-            f"{_safe_mean(ok_manifest[f'{region_name}_previous_fallback_ratio']):.6f}"
-        )
+    else:
+        for region_name in dataset.active_regions:
+            print(f"{region_name} valid ratio avg: {_safe_mean(ok_manifest[f'{region_name}_valid_ratio']):.6f}")
+            print(
+                f"{region_name} black crop ratio avg: "
+                f"{_safe_mean(ok_manifest[f'{region_name}_black_crop_ratio']):.6f}"
+            )
+            print(
+                f"{region_name} previous fallback ratio avg: "
+                f"{_safe_mean(ok_manifest[f'{region_name}_previous_fallback_ratio']):.6f}"
+            )
     print()
 
     loader = DataLoader(
@@ -200,31 +221,36 @@ def main() -> int:
 
     if args.show_low_quality > 0 and not manifest.empty:
         ranked = manifest.copy()
-        ranked["_max_black_crop_ratio"] = ranked[
-            ["left_hand_black_crop_ratio", "right_hand_black_crop_ratio", "face_black_crop_ratio"]
-        ].apply(pd.to_numeric, errors="coerce").max(axis=1)
-        ranked["_min_valid_ratio"] = ranked[
-            ["left_hand_valid_ratio", "right_hand_valid_ratio", "face_valid_ratio"]
-        ].apply(pd.to_numeric, errors="coerce").min(axis=1)
-        ranked = ranked.sort_values(
-            by=["status", "_max_black_crop_ratio", "_min_valid_ratio", "split", "sample_id"],
-            ascending=[False, False, True, True, True],
-            kind="stable",
-        ).head(int(args.show_low_quality))
+        if missing_quality_columns:
+            print("== Low-Quality Samples ==")
+            print("low-quality ranking skipped: manifest does not include region quality columns")
+            print()
+        else:
+            ranked["_max_black_crop_ratio"] = ranked[
+                ["left_hand_black_crop_ratio", "right_hand_black_crop_ratio", "face_black_crop_ratio"]
+            ].apply(pd.to_numeric, errors="coerce").max(axis=1)
+            ranked["_min_valid_ratio"] = ranked[
+                ["left_hand_valid_ratio", "right_hand_valid_ratio", "face_valid_ratio"]
+            ].apply(pd.to_numeric, errors="coerce").min(axis=1)
+            ranked = ranked.sort_values(
+                by=["status", "_max_black_crop_ratio", "_min_valid_ratio", "split", "sample_id"],
+                ascending=[False, False, True, True, True],
+                kind="stable",
+            ).head(int(args.show_low_quality))
 
-        print("== Low-Quality Samples ==")
-        for _, row in ranked.iterrows():
-            print(
-                f"{row['sample_id']} split={row['split']} status={row['status']} "
-                f"valid=({float(row['left_hand_valid_ratio']):.3f}, "
-                f"{float(row['right_hand_valid_ratio']):.3f}, "
-                f"{float(row['face_valid_ratio']):.3f}) "
-                f"black=({float(row['left_hand_black_crop_ratio']):.3f}, "
-                f"{float(row['right_hand_black_crop_ratio']):.3f}, "
-                f"{float(row['face_black_crop_ratio']):.3f}) "
-                f"preview={row.get('preview_path', '')}"
-            )
-        print()
+            print("== Low-Quality Samples ==")
+            for _, row in ranked.iterrows():
+                print(
+                    f"{row['sample_id']} split={row['split']} status={row['status']} "
+                    f"valid=({float(row['left_hand_valid_ratio']):.3f}, "
+                    f"{float(row['right_hand_valid_ratio']):.3f}, "
+                    f"{float(row['face_valid_ratio']):.3f}) "
+                    f"black=({float(row['left_hand_black_crop_ratio']):.3f}, "
+                    f"{float(row['right_hand_black_crop_ratio']):.3f}, "
+                    f"{float(row['face_black_crop_ratio']):.3f}) "
+                    f"preview={row.get('preview_path', '')}"
+                )
+            print()
 
     print("Sanity check passed.")
     return 0
