@@ -132,7 +132,7 @@ data/datasets/WLASL/index/**/*.log
 
 # Keep placeholders
 !data/datasets/WLASL/index/**/.gitkeep
-
+reports/
 outputs/
 packaging_outputs/
 
