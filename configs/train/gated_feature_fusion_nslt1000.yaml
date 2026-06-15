@@ -1,0 +1,124 @@
+experiment:
+  name: gated-fusion-nslt1000-sel31-ce-regions
+  seed: 42
+  output_root: outputs/fusion
+  monitor_metric: val/top5
+  monitor_mode: max
+  save_every_epoch: false
+
+dataset:
+  subset: nslt1000
+  num_classes: 1000
+
+  skeleton:
+    data_root: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l
+    keypoint_set: selected_31
+    expected_shape: [3, 150, 31, 1]
+    manifests:
+      train: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt1000_selected_31_train.csv
+      val: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt1000_selected_31_val.csv
+      test: data/datasets/WLASL/branch_inputs/skeleton/rtmw_l/manifests/nslt1000_selected_31_test.csv
+    return_metadata: true
+    strict_shape_check: true
+
+  regions:
+    data_root: data/datasets/WLASL/branch_inputs/regions/rtmw_l_union
+    expected_shape: [3, 3, 64, 112, 112]
+    region_order: [left_hand, right_hand, face]
+    active_regions: [left_hand, right_hand, face]
+    manifests:
+      train: data/datasets/WLASL/branch_inputs/regions/rtmw_l_union/manifests/nslt1000_train.csv
+      val: data/datasets/WLASL/branch_inputs/regions/rtmw_l_union/manifests/nslt1000_val.csv
+      test: data/datasets/WLASL/branch_inputs/regions/rtmw_l_union/manifests/nslt1000_test.csv
+    normalize:
+      type: imagenet
+    return_metadata: true
+    strict_shape_check: true
+
+dataloader:
+  batch_size: 8
+  num_workers: 2
+  pin_memory: true
+  shuffle_train: true
+
+skeleton_branch:
+  config_path: artifacts/fusion/nslt1000/configs/skeleton/config_resolved.yaml
+  checkpoint_path: artifacts/fusion/nslt1000/checkpoints/skeleton/best.pt
+  graph:
+    layout: selected_31
+    strategy: spatial
+    add_self_links: true
+    normalize_adjacency: true
+  model:
+    name: stgcnpp
+    in_channels: 3
+    num_nodes: 31
+    num_classes: 1000
+    base_channels: 64
+    dropout: 0.5
+
+regions_branch:
+  config_path: artifacts/fusion/nslt1000/configs/regions/config_resolved.yaml
+  checkpoint_path: artifacts/fusion/nslt1000/checkpoints/regions/best.pt
+  model:
+    name: region_resnet18_gru
+    num_classes: 1000
+    num_regions: 3
+    in_channels: 3
+    clip_len: 64
+    crop_size: 112
+    pretrained: false
+    freeze_encoder: true
+    encoder_name: resnet18
+    encoder_feature_dim: 512
+    gru_hidden_size: 128
+    gru_num_layers: 1
+    bidirectional: true
+    dropout: 0.5
+    fusion: concat
+    use_valid_mask: true
+
+fusion_model:
+  name: gated_feature_fusion
+  hidden_dim: 256
+  proj_dropout: 0.2
+  classifier_dropout: 0.5
+  freeze_skeleton: true
+  freeze_regions: true
+
+train:
+  epochs: 50
+  device: auto
+  optimizer: adamw
+  learning_rate: 0.0005
+  weight_decay: 0.001
+  loss: cross_entropy
+  grad_clip_norm: 1.0
+  amp: false
+
+early_stopping:
+  enabled: true
+  monitor_metric: val/top5
+  monitor_mode: max
+  patience: 8
+  min_delta: 0.0
+
+scheduler:
+  enabled: true
+  name: cosine
+  min_lr: 0.000001
+
+logging:
+  use_wandb: false
+  entity_env: WANDB_ENTITY
+  project: wlasl-nslt1000-gated-fusion
+  run_name: gated-fusion-nslt1000-sel31-ce-regions
+  tags:
+    - nslt1000
+    - gated-fusion
+    - skeleton-selected-31
+    - regions-union
+    - left-hand
+    - right-hand
+    - face
+  log_model: true

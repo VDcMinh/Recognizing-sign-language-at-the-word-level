@@ -10,6 +10,7 @@ from typing import Any
 import torch
 from torch.utils.data import Dataset
 
+from slr.branches.fusion.package_support import normalize_sample_id
 from slr.branches.regions.dataset import RegionClipDataset
 from slr.branches.skeleton.dataset import SkeletonGraphDataset
 from slr.utils.io import read_yaml
@@ -36,12 +37,7 @@ def _resolve_path(
 def _normalize_sample_id_key(value: Any) -> str:
     """Normalize sample IDs so zero-padded numeric IDs align across branches."""
 
-    sample_id = str(value).strip()
-    if not sample_id:
-        return ""
-    if sample_id.isdigit():
-        return str(int(sample_id))
-    return sample_id
+    return normalize_sample_id(value)
 
 
 def load_paired_skeleton_regions_config(
