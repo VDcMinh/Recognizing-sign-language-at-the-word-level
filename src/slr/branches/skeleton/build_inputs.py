@@ -33,7 +33,7 @@ from slr.utils.io import ensure_dir, read_csv, read_yaml, write_dataframe_csv, w
 from slr.utils.logging import setup_logger
 
 
-DEFAULT_CONFIG_PATH = Path("configs/branches/skeleton/stgcnpp_27.yaml")
+DEFAULT_CONFIG_PATH = Path("configs/build_inputs/skeleton/nslt100/selected_27.yaml")
 ALLOWED_SPLITS = ("train", "val", "test")
 LOGGER = setup_logger(__name__)
 

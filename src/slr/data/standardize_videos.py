@@ -26,7 +26,7 @@ from slr.utils.logging import setup_logger
 from slr.utils.video import probe_video_basic, read_frames, write_video_from_frames
 
 
-DEFAULT_CONFIG_PATH = Path("configs/preprocessing/standardize.yaml")
+DEFAULT_CONFIG_PATH = Path("configs/preprocessing/standardize/standardize_nslt100.yaml")
 ALLOWED_SPLITS = ("train", "val", "test")
 LOGGER = setup_logger(__name__)
 

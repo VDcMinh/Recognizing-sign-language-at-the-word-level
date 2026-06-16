@@ -1,112 +1,60 @@
 # Recognizing Sign Language at the Word Level
 
-Research project scaffold for Word-Level Sign Language Recognition (WSLR) on the WLASL dataset.
+Word-level sign language recognition workspace for WLASL with three active backend tracks:
 
-## Goal
+- `skeleton`: RTMW-l pose -> selected keypoints -> graph tensors -> ST-GCN++
+- `regions`: RTMW-l guided face and hand crops -> region tensors -> ResNet18-GRU
+- `fusion`: gated feature fusion over validated skeleton and regions backbones
 
-This repository is organized around a clean, stage-based pipeline for building and evaluating WLASL word-level recognition systems, with the current implementation priority on the skeleton branch.
+## Current layout
 
-## Dataset
+- Source code: `src/slr/`
+- Active configs: `configs/`
+- CLI entrypoints: `scripts/preprocess/`, `scripts/train/`, `scripts/evaluate/`, `scripts/verify/`, `scripts/package/`
+- Model metadata: `model_registry/`
+- Historical notes: `docs/history/`
+- Current reports: `reports/current/`
 
-- Dataset: WLASL
-- Raw data root: `data/datasets/WLASL/raw/`
-- Raw data is treated as read-only source of truth and must not be modified in-place.
+## Important constraints
 
-## Branches
+- `data/` is treated as immutable project data and was not reorganized here.
+- `UI/` is intentionally untouched. This cleanup only prepares backend, config, and registry support for future UI integration.
+- Checkpoints are referenced from metadata; they are not stored inside `model_registry/`.
 
-1. Skeleton branch: current primary branch, based on RTMW-l / MMPose whole-body pose, selected keypoint subsets, and graph-based sequence models such as ST-GCN++ and CTR-GCN.
-2. Region branch: sequence modeling over cropped face, left-hand, and right-hand regions.
-3. Hand sequence + Pose Flow branch: hand image sequences combined with keypoint motion / pose flow representations.
+## Active config examples
 
-## Pipeline
+- Skeleton train: `configs/train/skeleton/nslt1000/selected_31/stgcnpp_ce.yaml`
+- Regions train: `configs/train/regions/nslt1000/full/region_resnet18_gru_ce.yaml`
+- Fusion train: `configs/train/fusion/gated_feature/nslt1000/gated_feature_fusion_ce.yaml`
+- Pose extraction: `configs/preprocessing/pose/pose_rtmw_l.yaml`
+- Region crop build: `configs/preprocessing/regions/region_crops_nslt1000.yaml`
+- Skeleton input build: `configs/build_inputs/skeleton/nslt1000/selected_31.yaml`
 
-```text
-raw
--> index
--> standardized
--> pose/rtmw_l/wholebody_133
--> branch_inputs
--> training/evaluation
+## Common commands
+
+```bash
+python scripts/preprocess/00_build_index.py
+python scripts/preprocess/01_standardize_videos.py --config configs/preprocessing/standardize/standardize_nslt1000.yaml
+python scripts/preprocess/02_extract_pose_rtmw.py --config configs/preprocessing/pose/pose_rtmw_l.yaml --subset nslt1000
+python scripts/preprocess/03_build_skeleton_inputs.py --config configs/build_inputs/skeleton/nslt1000/selected_31.yaml
+python scripts/train/train_skeleton.py --config configs/train/skeleton/nslt1000/selected_31/stgcnpp_ce.yaml
+python scripts/train/train_regions.py --config configs/train/regions/nslt1000/full/region_resnet18_gru_ce.yaml
+python scripts/train/train_gated_fusion.py --config configs/train/fusion/gated_feature/nslt1000/gated_feature_fusion_ce.yaml
 ```
 
-## Roadmap
+## Model Registry
 
-1. Build index from raw metadata.
-2. Standardize video clips.
-3. Extract RTMW-l wholebody 133 pose.
-4. Build skeleton `selected_31` inputs.
-5. Train an ST-GCN++ baseline.
-6. Add label smoothing / Language Label Smoothing.
-7. Later implement the region branch.
-8. Later implement the hand pose flow branch.
+`model_registry/registry.yaml` is the discovery index for future backend/UI selection. The current registry contains:
 
-## Expected Data Schemas
+- `skeleton_nslt1000_sel31_v1`: `ready`
+- `regions_nslt1000_face_hands_v1`: `ready`
+- `gated_fusion_nslt1000_v1`: `incomplete`
 
-### Index manifest columns
+The fusion entry is marked incomplete because this repo snapshot contains validated backbone checkpoints and configs, but no verified local fusion checkpoint.
 
-- `sample_id`
-- `video_id`
-- `gloss`
-- `class_id`
-- `subset`
-- `split`
-- `raw_video_path`
-- `has_video`
-- `frame_start`
-- `frame_end`
-- `bbox_x1`
-- `bbox_y1`
-- `bbox_x2`
-- `bbox_y2`
-- `signer_id`
-- `fps`
-- `width`
-- `height`
-- `num_frames`
+## Documentation
 
-### Standardized manifest columns
-
-- `sample_id`
-- `video_id`
-- `gloss`
-- `class_id`
-- `split`
-- `standardized_video_path`
-- `frames_dir`
-- `num_frames`
-- `output_size`
-- `crop_bbox`
-- `status`
-- `error_message`
-
-### Shared pose `.npz`
-
-- `keypoints`: shape `(T, 133, 3)`
-- `image_size`
-- `sample_id`
-- `video_id`
-- `gloss`
-- `class_id`
-- `split`
-
-### Skeleton selected `.npz`
-
-- `keypoints`: shape `(T, 31, 3)` for `selected_31`
-- `keypoint_set`
-- `sample_id`
-- `video_id`
-- `gloss`
-- `class_id`
-- `split`
-
-### Graph tensor layout
-
-- Shape: `C x T x V x M`
-- `C = 2` or `3`
-- `T = 150`
-- `V = 31`
-- `M = 1`
-
-## Environment Notes
-
-`requirements.txt` intentionally keeps the base environment light for dataset indexing and preprocessing utilities. Install PyTorch, MMPose, MMEngine, and related CUDA-specific dependencies separately for the target machine and GPU stack.
+- Structure guide: `docs/architecture/project_structure_guide.md`
+- Training guide: `docs/training/training_guide.md`
+- Packaging notes: `docs/packaging/`
+- Cleanup history and archived reports: `docs/history/`

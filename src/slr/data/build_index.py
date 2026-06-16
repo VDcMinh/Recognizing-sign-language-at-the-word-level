@@ -33,7 +33,7 @@ from slr.utils.logging import setup_logger
 
 
 ALLOWED_SPLITS = ("train", "val", "test")
-DEFAULT_CONFIG_PATH = Path("configs/preprocessing/index.yaml")
+DEFAULT_CONFIG_PATH = Path("configs/preprocessing/index/index.yaml")
 
 
 def parse_args() -> argparse.Namespace:

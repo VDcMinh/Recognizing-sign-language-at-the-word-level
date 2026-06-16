@@ -1,0 +1,24 @@
+registry_version: 1
+default_model: skeleton_nslt1000_sel31_v1
+
+models:
+  - id: skeleton_nslt1000_sel31_v1
+    display_name: "Skeleton ST-GCN++ - NSLT1000"
+    branch: skeleton
+    model_type: stgcnpp
+    status: ready
+    registry_file: models/skeleton_nslt1000_sel31/model.yaml
+
+  - id: regions_nslt1000_face_hands_v1
+    display_name: "Regions ResNet18-GRU - NSLT1000"
+    branch: regions
+    model_type: region_resnet18_gru
+    status: ready
+    registry_file: models/regions_nslt1000_face_hands/model.yaml
+
+  - id: gated_fusion_nslt1000_v1
+    display_name: "Gated Fusion - NSLT1000"
+    branch: fusion
+    model_type: gated_feature_fusion
+    status: incomplete
+    registry_file: models/gated_fusion_nslt1000/model.yaml

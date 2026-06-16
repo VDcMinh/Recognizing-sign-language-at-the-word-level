@@ -1129,7 +1129,7 @@ def create_package_readme(package_name: str) -> str:
         "```\n\n"
         "## 10. Train on Kaggle\n"
         "```bash\n"
-        "python scripts/train_gated_fusion.py \\\n"
+        "python scripts/train/train_gated_fusion.py \\\n"
         f"  --config {kaggle_root}/configs/gated_feature_fusion_nslt1000_kaggle.yaml\n"
         "```\n"
     )

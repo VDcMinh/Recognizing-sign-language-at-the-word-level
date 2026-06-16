@@ -55,7 +55,7 @@ from slr.utils.io import (
 from slr.utils.logging import setup_logger
 
 
-DEFAULT_CONFIG_PATH = Path("configs/preprocessing/region_crops.yaml")
+DEFAULT_CONFIG_PATH = Path("configs/preprocessing/regions/region_crops_nslt100.yaml")
 ALLOWED_SPLITS = ("train", "val", "test")
 DEFAULT_PREVIEW_FRAME_INDICES = (0, 15, 31, 47, 63)
 DEFAULT_BLACK_CROP_RATIO_THRESHOLD = 0.3

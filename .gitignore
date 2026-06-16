@@ -83,8 +83,8 @@ checkpoints/pose/rtmw_l/*
 # ============================================================
 # Local smoke-test outputs
 # ============================================================
-scripts/tools/_rtmw_mmpose_video_test_output/
-scripts/tools/_*_test_output/
+scripts/dev/_rtmw_mmpose_video_test_output/
+scripts/dev/_*_test_output/
 
 
 # ============================================================

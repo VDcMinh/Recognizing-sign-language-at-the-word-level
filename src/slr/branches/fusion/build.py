@@ -123,7 +123,7 @@ def load_gated_feature_fusion_config(
             "config_path": _resolve_path(
                 skeleton_branch_cfg.get(
                     "config_path",
-                    "configs/train/skeleton_selected_31_stgcnpp.yaml",
+                    "configs/train/skeleton/nslt100/selected_31/stgcnpp_ce.yaml",
                 ),
                 project_root=project_path,
             ),
@@ -149,7 +149,7 @@ def load_gated_feature_fusion_config(
             "config_path": _resolve_path(
                 regions_branch_cfg.get(
                     "config_path",
-                    "configs/train/regions_resnet18_gru_nslt100.yaml",
+                    "configs/train/regions/nslt100/face_hands/region_resnet18_gru_ce.yaml",
                 ),
                 project_root=project_path,
             ),

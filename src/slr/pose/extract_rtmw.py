@@ -27,7 +27,7 @@ from slr.utils.io import ensure_dir, read_csv, read_yaml, write_dataframe_csv, w
 from slr.utils.logging import setup_logger
 
 
-DEFAULT_CONFIG_PATH = Path("configs/preprocessing/pose_rtmw_l.yaml")
+DEFAULT_CONFIG_PATH = Path("configs/preprocessing/pose/pose_rtmw_l.yaml")
 ALLOWED_SPLITS = ("train", "val", "test")
 LOGGER = setup_logger(__name__)
 
@@ -295,7 +295,7 @@ def _resolve_model_file(path: Path | None, pattern: str) -> Path:
 
     raise FileNotFoundError(
         "RTMW-l config/checkpoint not found. Please place files under "
-        "`checkpoints/pose/rtmw_l/` or update `configs/preprocessing/pose_rtmw_l.yaml`."
+        "`checkpoints/pose/rtmw_l/` or update `configs/preprocessing/pose/pose_rtmw_l.yaml`."
     )
 
 
