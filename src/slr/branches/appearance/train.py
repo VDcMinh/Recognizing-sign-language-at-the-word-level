@@ -29,7 +29,7 @@ from slr.utils.io import ensure_dir, read_yaml, write_json, write_yaml
 from slr.utils.logging import setup_logger
 
 
-DEFAULT_TOPK = (1, 5)
+DEFAULT_TOPK = (1, 5, 10)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -176,7 +176,7 @@ def _normalize_training_config(config: dict[str, Any], *, config_path: Path) -> 
     early_cfg.setdefault("patience", 10)
     early_cfg.setdefault("min_delta", 0.0)
 
-    eval_cfg.setdefault("topk", [1, 5])
+    eval_cfg.setdefault("topk", [1, 5, 10])
 
     wandb_cfg.setdefault("enabled", False)
     wandb_cfg.setdefault("project", "wlasl-appearance-i3d")
@@ -232,6 +232,7 @@ def resolve_training_config(config_path: Path, args: argparse.Namespace) -> dict
     normalized = _normalize_training_config(config, config_path=config_path)
     resolved = apply_cli_overrides(normalized, args)
     resolved = _attach_loss_metadata(resolved)
+    resolved["eval"]["topk"] = list(_resolve_topk_from_config(resolved))
 
     if not str(resolved["data"]["package_root"]).strip():
         raise ValueError("data.package_root must be provided in config or via --package-root.")
@@ -402,6 +403,89 @@ def _extract_logits(model_output: torch.Tensor | dict[str, torch.Tensor]) -> tor
     return model_output
 
 
+def _normalize_topk_values(
+    topk_values: list[int] | tuple[int, ...] | None,
+    *,
+    num_classes: int | None = None,
+) -> tuple[int, ...]:
+    """Normalize, deduplicate, and clamp configured top-k values."""
+
+    raw_values = DEFAULT_TOPK if topk_values is None else topk_values
+    normalized: list[int] = []
+    seen: set[int] = set()
+    class_cap = None if num_classes is None else max(1, int(num_classes))
+
+    for value in raw_values:
+        k = int(value)
+        if k <= 0:
+            continue
+        if class_cap is not None:
+            k = min(k, class_cap)
+        if k in seen:
+            continue
+        seen.add(k)
+        normalized.append(k)
+
+    if not normalized:
+        fallback = min(DEFAULT_TOPK[0], class_cap) if class_cap is not None else DEFAULT_TOPK[0]
+        normalized.append(max(1, int(fallback)))
+    return tuple(normalized)
+
+
+def _resolve_topk_from_config(config: dict[str, Any]) -> tuple[int, ...]:
+    """Resolve appearance top-k metrics from config with safe defaults."""
+
+    num_classes = config.get("model", {}).get("num_classes")
+    return _normalize_topk_values(config.get("eval", {}).get("topk", list(DEFAULT_TOPK)), num_classes=num_classes)
+
+
+def _build_split_metric_payload(
+    split_name: str,
+    metrics: dict[str, float],
+    *,
+    topk: tuple[int, ...],
+    include_loss: bool = True,
+) -> dict[str, float]:
+    """Build slash-formatted metric payloads such as ``train/top10``."""
+
+    payload: dict[str, float] = {}
+    if include_loss and "loss" in metrics:
+        payload[f"{split_name}/loss"] = float(metrics["loss"])
+    for k in topk:
+        payload[f"{split_name}/top{k}"] = float(metrics.get(f"top{k}", 0.0))
+    return payload
+
+
+def _history_entry_from_flat_metrics(flat_metrics: dict[str, float], *, topk: tuple[int, ...]) -> dict[str, float]:
+    """Convert slash-formatted metrics to underscore keys for ``metrics.json`` history."""
+
+    history_entry = {
+        "epoch": int(flat_metrics["epoch"]),
+        "lr": float(flat_metrics["lr"]),
+        "train_loss": float(flat_metrics["train/loss"]),
+        "val_loss": float(flat_metrics["val/loss"]),
+    }
+    for split_name in ("train", "val"):
+        for k in topk:
+            history_entry[f"{split_name}_top{k}"] = float(flat_metrics.get(f"{split_name}/top{k}", 0.0))
+    return history_entry
+
+
+def _augment_summary_with_split_metrics(
+    summary: dict[str, Any],
+    *,
+    split_name: str,
+    metrics: dict[str, float],
+    topk: tuple[int, ...],
+) -> None:
+    """Attach flat summary keys such as ``test_top10``."""
+
+    if "loss" in metrics:
+        summary[f"{split_name}_loss"] = float(metrics["loss"])
+    for k in topk:
+        summary[f"{split_name}_top{k}"] = float(metrics.get(f"top{k}", 0.0))
+
+
 def _validate_batch_shape(batch_video: torch.Tensor, *, clip_len: int, input_size: int) -> None:
     """Validate one batched video tensor shape."""
 
@@ -517,21 +601,28 @@ def _is_improved(current: float, best: float | None, *, mode: str, min_delta: fl
     raise ValueError(f"Unsupported mode {mode!r}. Expected 'max' or 'min'.")
 
 
-def _log_epoch_summary(logger, epoch: int, total_epochs: int, metrics: dict[str, float]) -> None:
+def _log_epoch_summary(
+    logger,
+    epoch: int,
+    total_epochs: int,
+    metrics: dict[str, float],
+    *,
+    topk: tuple[int, ...],
+) -> None:
     """Write one concise epoch summary to the logger."""
 
-    logger.info(
-        "Epoch %s/%s | train_loss=%.4f train_top1=%.4f train_top5=%.4f "
-        "val_loss=%.4f val_top1=%.4f val_top5=%.4f",
-        epoch,
-        total_epochs,
-        metrics["train/loss"],
-        metrics["train/top1"],
-        metrics["train/top5"],
-        metrics["val/loss"],
-        metrics["val/top1"],
-        metrics["val/top5"],
+    message_parts = [
+        f"Epoch {epoch}/{total_epochs}",
+        f"train_loss={metrics['train/loss']:.4f}",
+    ]
+    message_parts.extend(
+        f"train_top{k}={float(metrics.get(f'train/top{k}', 0.0)):.4f}" for k in topk
     )
+    message_parts.append(f"val_loss={metrics['val/loss']:.4f}")
+    message_parts.extend(
+        f"val_top{k}={float(metrics.get(f'val/top{k}', 0.0)):.4f}" for k in topk
+    )
+    logger.info(" | ".join(message_parts))
 
 
 def _write_training_outputs(
@@ -641,7 +732,7 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
         start_epoch = best_epoch + 1
         logger.info("Resumed from checkpoint=%s epoch=%s", resume_path.as_posix(), best_epoch)
 
-    topk = tuple(int(value) for value in resolved_config.get("eval", {}).get("topk", [1, 5]))
+    topk = _resolve_topk_from_config(resolved_config)
     accumulation_steps = int(resolved_config["training"].get("gradient_accumulation_steps", 1))
     grad_clip_norm = resolved_config["training"].get("grad_clip_norm")
     grad_clip_norm = None if grad_clip_norm is None else float(grad_clip_norm)
@@ -677,9 +768,9 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
                 "split": "test",
                 "checkpoint": str(resume_path_text),
                 "loss": float(test_metrics["loss"]),
-                "top1": float(test_metrics.get("top1", 0.0)),
-                "top5": float(test_metrics.get("top5", 0.0)),
             }
+            for k in topk:
+                result[f"top{k}"] = float(test_metrics.get(f"top{k}", 0.0))
             logger.info("Eval-only result: %s", json.dumps(result))
             print(json.dumps(result, indent=2))
             return 0
@@ -715,29 +806,11 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
                 scheduler.step()
 
             lr = float(optimizer.param_groups[0]["lr"])
-            flat_metrics = {
-                "epoch": epoch,
-                "lr": lr,
-                "train/loss": float(train_metrics["loss"]),
-                "train/top1": float(train_metrics.get("top1", 0.0)),
-                "train/top5": float(train_metrics.get("top5", 0.0)),
-                "val/loss": float(val_metrics["loss"]),
-                "val/top1": float(val_metrics.get("top1", 0.0)),
-                "val/top5": float(val_metrics.get("top5", 0.0)),
-            }
-            history.append(
-                {
-                    "epoch": epoch,
-                    "lr": lr,
-                    "train_loss": flat_metrics["train/loss"],
-                    "train_top1": flat_metrics["train/top1"],
-                    "train_top5": flat_metrics["train/top5"],
-                    "val_loss": flat_metrics["val/loss"],
-                    "val_top1": flat_metrics["val/top1"],
-                    "val_top5": flat_metrics["val/top5"],
-                }
-            )
-            _log_epoch_summary(logger, epoch, total_epochs, flat_metrics)
+            flat_metrics = {"epoch": epoch, "lr": lr}
+            flat_metrics.update(_build_split_metric_payload("train", train_metrics, topk=topk))
+            flat_metrics.update(_build_split_metric_payload("val", val_metrics, topk=topk))
+            history.append(_history_entry_from_flat_metrics(flat_metrics, topk=topk))
+            _log_epoch_summary(logger, epoch, total_epochs, flat_metrics, topk=topk)
             log_wandb_metrics(wandb_run, flat_metrics, step=epoch)
 
             current_metric = float(flat_metrics[monitor_key])
@@ -825,11 +898,7 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
             accumulation_steps=1,
             topk=topk,
         )
-        test_payload = {
-            "test/loss": float(test_metrics["loss"]),
-            "test/top1": float(test_metrics.get("top1", 0.0)),
-            "test/top5": float(test_metrics.get("top5", 0.0)),
-        }
+        test_payload = _build_split_metric_payload("test", test_metrics, topk=topk)
         log_wandb_metrics(wandb_run, test_payload, step=best_epoch)
 
         if wandb_run is not None and bool(logging_cfg.get("log_model", True)):
@@ -846,12 +915,18 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
             "label_smoothing_epsilon": float(resolved_config["runtime"]["label_smoothing_epsilon"]),
             "best_epoch": int(best_epoch),
             "best_metric": None if best_metric is None else float(best_metric),
-            "test_loss": float(test_metrics["loss"]),
-            "test_top1": float(test_metrics.get("top1", 0.0)),
-            "test_top5": float(test_metrics.get("top5", 0.0)),
             "final_train_loss": float(history[-1]["train_loss"]),
             "final_val_loss": float(history[-1]["val_loss"]),
+            "eval_topk": list(topk),
         }
+        _augment_summary_with_split_metrics(metrics_summary, split_name="test", metrics=test_metrics, topk=topk)
+        final_train_metrics = {"loss": history[-1]["train_loss"]}
+        final_val_metrics = {"loss": history[-1]["val_loss"]}
+        for k in topk:
+            final_train_metrics[f"top{k}"] = float(history[-1].get(f"train_top{k}", 0.0))
+            final_val_metrics[f"top{k}"] = float(history[-1].get(f"val_top{k}", 0.0))
+        _augment_summary_with_split_metrics(metrics_summary, split_name="final_train", metrics=final_train_metrics, topk=topk)
+        _augment_summary_with_split_metrics(metrics_summary, split_name="final_val", metrics=final_val_metrics, topk=topk)
         summary = {
             "run_name": run_name,
             "branch": "appearance",
@@ -889,6 +964,8 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
                 "device": str(device),
                 "stopped_epoch": None if stopped_epoch is None else int(stopped_epoch),
             },
+            "metrics": metrics_summary,
+            "eval": {"topk": list(topk)},
             "wandb_run_url": getattr(wandb_run, "url", None),
         }
         _write_training_outputs(
@@ -898,7 +975,13 @@ def run_training(config_path: Path, args: argparse.Namespace) -> int:
             metrics_summary=metrics_summary,
             summary=summary,
         )
-        logger.info("Training finished. Best epoch=%s test_top1=%.4f", best_epoch, test_metrics.get("top1", 0.0))
+        logger.info(
+            "Training finished. Best epoch=%s %s",
+            best_epoch,
+            " ".join(
+                f"test_top{k}={float(test_metrics.get(f'top{k}', 0.0)):.4f}" for k in topk
+            ),
+        )
         return 0
     finally:
         finish_wandb_run(wandb_run)
@@ -939,7 +1022,7 @@ def run_evaluation(
     model = build_appearance_model(config["model"]).to(device)
     criterion = build_loss_from_config(_build_loss_config(config))
     payload = load_checkpoint(checkpoint_path, model, map_location=device)
-    topk = tuple(int(value) for value in config.get("eval", {}).get("topk", [1, 5]))
+    topk = _resolve_topk_from_config(config)
     metrics = run_one_epoch(
         model=model,
         loader=dataloaders[split],
@@ -957,15 +1040,15 @@ def run_evaluation(
         "checkpoint": str(checkpoint_path.as_posix()),
         "epoch": int(payload.get("epoch", 0)),
         "loss": float(metrics["loss"]),
-        "top1": float(metrics.get("top1", 0.0)),
-        "top5": float(metrics.get("top5", 0.0)),
     }
+    for k in topk:
+        result[f"top{k}"] = float(metrics.get(f"top{k}", 0.0))
     logger.info(
-        "Evaluation split=%s loss=%.4f top1=%.4f top5=%.4f",
+        "Evaluation split=%s %s",
         split,
-        result["loss"],
-        result["top1"],
-        result["top5"],
+        " ".join(
+            [f"loss={result['loss']:.4f}"] + [f"top{k}={float(result[f'top{k}']):.4f}" for k in topk]
+        ),
     )
     return result
 

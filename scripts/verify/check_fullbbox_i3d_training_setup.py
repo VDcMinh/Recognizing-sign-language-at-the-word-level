@@ -19,6 +19,7 @@ from slr.branches.appearance.train import (
     select_device,
 )
 from slr.training.losses import build_loss_from_config
+from slr.training.metrics import accuracy_topk
 from slr.utils.io import read_json, write_json
 from slr.utils.logging import setup_logger
 
@@ -122,6 +123,22 @@ def _resolve_output_path(path: Path, repo_root: Path) -> Path:
     return path if path.is_absolute() else (repo_root / path).resolve()
 
 
+def _normalize_topk_values(topk_values: Any) -> list[int]:
+    """Normalize top-k values for reporting."""
+
+    if topk_values is None:
+        return [1, 5, 10]
+    normalized: list[int] = []
+    seen: set[int] = set()
+    for value in topk_values:
+        k = int(value)
+        if k <= 0 or k in seen:
+            continue
+        seen.add(k)
+        normalized.append(k)
+    return normalized or [1, 5, 10]
+
+
 def _build_markdown(summary: dict[str, Any]) -> str:
     """Render one Markdown report from the smoke-test summary."""
 
@@ -139,6 +156,7 @@ def _build_markdown(summary: dict[str, Any]) -> str:
     lines.append(f"- I3D variant: `{summary['i3d_variant']}`")
     lines.append("")
     lines.append("## Precheck")
+    lines.append(f"- Configured eval.topk: `{precheck['configured_topk']}`")
     lines.append(f"- Split sizes: train={precheck['dataset_sizes']['train']}, val={precheck['dataset_sizes']['val']}, test={precheck['dataset_sizes']['test']}")
     lines.append(f"- Batch shape: `{precheck['batch_shape']}`")
     lines.append(f"- Batch dtype: `{precheck['batch_dtype']}`")
@@ -146,6 +164,8 @@ def _build_markdown(summary: dict[str, Any]) -> str:
     lines.append(f"- Logits shape: `{precheck['logits_shape']}`")
     lines.append(f"- Loss type: `{precheck['loss_type']}`")
     lines.append(f"- Initial loss: `{precheck['initial_loss']}`")
+    for key, value in precheck.get("batch_accuracy", {}).items():
+        lines.append(f"- Batch {key}: `{value}`")
     lines.append(
         f"- Model parameters: total={precheck['parameter_count']['total']}, "
         f"trainable={precheck['parameter_count']['trainable']}"
@@ -164,10 +184,11 @@ def _build_markdown(summary: dict[str, Any]) -> str:
             f"- Best epoch: `{smoke['metrics_summary'].get('best_epoch')}` | "
             f"Best metric: `{smoke['metrics_summary'].get('best_metric')}`"
         )
-        lines.append(
-            f"- Test top1: `{smoke['metrics_summary'].get('test_top1')}` | "
-            f"Test top5: `{smoke['metrics_summary'].get('test_top5')}`"
-        )
+        metric_parts = []
+        for k in smoke.get("configured_topk", []):
+            metric_parts.append(f"test_top{k}=`{smoke['metrics_summary'].get(f'test_top{k}')}`")
+        if metric_parts:
+            lines.append(f"- {' | '.join(metric_parts)}")
     lines.append("")
     lines.append("## Notes")
     for note in summary["notes"]:
@@ -209,6 +230,7 @@ def main() -> int:
         precheck_started = time.perf_counter()
         resolved_config = resolve_training_config(args.config, training_args)
         device = select_device(str(resolved_config["training"]["device"]), logger=logger)
+        configured_topk = _normalize_topk_values(resolved_config.get("eval", {}).get("topk"))
         datasets = build_appearance_datasets(resolved_config)
         dataloaders = build_appearance_dataloaders(resolved_config, datasets, device=device)
         sample_batch = next(iter(dataloaders["train"]))
@@ -221,10 +243,12 @@ def main() -> int:
             output = model(video)
             logits = output["logits"] if isinstance(output, dict) else output
             initial_loss = float(criterion(logits, labels).item())
+            batch_accuracy = accuracy_topk(logits, labels, topk=tuple(configured_topk))
 
         precheck_summary = {
             "duration_seconds": round(time.perf_counter() - precheck_started, 3),
             "device": str(device),
+            "configured_topk": list(configured_topk),
             "dataset_sizes": {
                 "train": len(datasets["train"]),
                 "val": len(datasets["val"]),
@@ -236,6 +260,7 @@ def main() -> int:
             "logits_shape": list(logits.shape),
             "initial_loss": round(initial_loss, 6),
             "loss_type": str(resolved_config["runtime"]["loss_type"]),
+            "batch_accuracy": {key: round(float(value), 6) for key, value in batch_accuracy.items()},
             "parameter_count": _count_parameters(model),
         }
 
@@ -273,6 +298,7 @@ def main() -> int:
                 "exit_code": exit_code,
                 "duration_seconds": smoke_duration,
                 "output_dir": output_dir.as_posix(),
+                "configured_topk": list(configured_topk),
                 "metrics_summary": metrics_payload.get("summary", {}),
                 "artifacts": {
                     "best_checkpoint_exists": best_checkpoint.exists(),

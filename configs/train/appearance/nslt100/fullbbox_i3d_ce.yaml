@@ -75,7 +75,7 @@ training:
     min_delta: 0.0
 
 eval:
-  topk: [1, 5]
+  topk: [1, 5, 10]
 
 wandb:
   enabled: false
