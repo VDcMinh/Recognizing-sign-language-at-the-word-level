@@ -1,8 +1,0 @@
-{
-  "split": "test",
-  "checkpoint": "outputs/skeleton/smoke-sel31-stgcnpp/checkpoints/best.pt",
-  "epoch": 1,
-  "loss": 4.49727988243103,
-  "top1": 0.0625,
-  "top5": 0.25
-}
