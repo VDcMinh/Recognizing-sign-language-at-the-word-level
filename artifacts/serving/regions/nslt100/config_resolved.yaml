@@ -1,0 +1,117 @@
+experiment:
+  name: nslt100-regions-resnet18-gru-resnet18-gru-ce-lr0p0001-wd0p001-bs8-ep50-noes-v1
+  output_dir: outputs/regions/nslt100-regions-resnet18-gru-resnet18-gru-ce-lr0p0001-wd0p001-bs8-ep50-noes-v1
+  seed: 42
+  monitor_metric: val_top5
+  monitor_mode: max
+  save_every_epoch: false
+dataset:
+  subset: nslt100
+  num_classes: 100
+  data_root: /kaggle/working/wlasl-nslt100-regions-rtmw-l
+  manifests:
+    train: /kaggle/working/wlasl-nslt100-regions-rtmw-l/manifests/nslt100_train.csv
+    val: /kaggle/working/wlasl-nslt100-regions-rtmw-l/manifests/nslt100_val.csv
+    test: /kaggle/working/wlasl-nslt100-regions-rtmw-l/manifests/nslt100_test.csv
+  expected_shape:
+  - 3
+  - 3
+  - 64
+  - 112
+  - 112
+  region_order:
+  - left_hand
+  - right_hand
+  - face
+  normalize:
+    type: imagenet
+  return_metadata: true
+  strict_shape_check: true
+  name: WLASL
+model:
+  name: region_resnet18_gru
+  num_classes: 100
+  num_regions: 3
+  in_channels: 3
+  clip_len: 64
+  crop_size: 112
+  pretrained: true
+  freeze_encoder: true
+  encoder_name: resnet18
+  encoder_feature_dim: 512
+  gru_hidden_size: 128
+  gru_num_layers: 1
+  bidirectional: true
+  dropout: 0.5
+  fusion: concat
+  use_valid_mask: true
+  cnn_feature_dim: 256
+train:
+  epochs: 50
+  batch_size: 8
+  num_workers: 2
+  pin_memory: true
+  shuffle_train: true
+  device: auto
+  loss: cross_entropy
+  amp: true
+  grad_clip_norm: null
+  save_best_metric: val_top5
+  optimizer:
+    name: adamw
+    lr: 0.0001
+    weight_decay: 0.001
+  scheduler:
+    enabled: true
+    name: cosine
+    min_lr: 1.0e-05
+early_stopping:
+  enabled: false
+  monitor: val_top5
+  mode: max
+  patience: 8
+  min_delta: 0.0
+augmentation:
+  enabled: false
+  color_jitter:
+    enabled: false
+    brightness: 0.2
+    contrast: 0.2
+    saturation: 0.15
+    hue: 0.05
+  random_resized_crop:
+    enabled: false
+    scale:
+    - 0.85
+    - 1.0
+  random_erasing:
+    enabled: false
+    p: 0.15
+  temporal_dropout:
+    enabled: false
+    p: 0.1
+  region_dropout:
+    enabled: false
+    p: 0.1
+logging:
+  use_wandb: true
+  entity_env: WANDB_ENTITY
+  project: wlasl-region-100
+  run_name: nslt100-regions-resnet18-gru-resnet18-gru-ce-lr0p0001-wd0p001-bs8-ep50-noes-v1
+  tags:
+  - regions
+  - nslt100
+  - resnet18
+  - gru
+  - pretrained
+  - frozen_encoder
+  log_model: true
+  entity: vuducminh474-hanoi-university-of-science-and-technology
+config_path: configs/train/regions_resnet18_gru_nslt100.yaml
+project_root: /kaggle/working/Recognizing-sign-language-at-the-word-level
+runtime:
+  limit_train: null
+  limit_val: null
+  limit_test: null
+  loss_type: cross_entropy
+  label_smoothing_epsilon: 0.0

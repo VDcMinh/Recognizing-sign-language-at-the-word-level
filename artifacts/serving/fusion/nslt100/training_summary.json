@@ -1,0 +1,129 @@
+{
+  "run_name": "gated-fusion-nslt100-sel31-ce-regions-lr5e-4-wd1e-3",
+  "output_dir": "/kaggle/working/outputs/fusion/gated-fusion-nslt100-sel31-ce-regions-lr5e-4-wd1e-3",
+  "config_path": "/kaggle/working/gated_feature_fusion_nslt100_kaggle_run.yaml",
+  "config_resolved_path": "/kaggle/working/outputs/fusion/gated-fusion-nslt100-sel31-ce-regions-lr5e-4-wd1e-3/config_resolved.yaml",
+  "best_checkpoint": "/kaggle/working/outputs/fusion/gated-fusion-nslt100-sel31-ce-regions-lr5e-4-wd1e-3/best.pt",
+  "last_checkpoint": "/kaggle/working/outputs/fusion/gated-fusion-nslt100-sel31-ce-regions-lr5e-4-wd1e-3/last.pt",
+  "training_history_csv": "/kaggle/working/outputs/fusion/gated-fusion-nslt100-sel31-ce-regions-lr5e-4-wd1e-3/training_history.csv",
+  "monitor_metric": "val/top5",
+  "monitor_mode": "max",
+  "best_epoch": 22,
+  "best_metric": 0.8678787882400281,
+  "stopped_epoch": 28,
+  "epochs_completed": 28,
+  "metrics": {
+    "best_val_loss": 2.1278226108262035,
+    "best_val_top1": 0.69454545472607466,
+    "best_val_top5": 0.8678787882400281,
+    "best_val_top10": 0.9124242427854827,
+    "best_val_gate_mean": 0.5670133373954079,
+    "best_val_gate_std": 0.0917166793715712,
+    "best_val_gate_min": 0.11870173364877701,
+    "best_val_gate_max": 0.9144854545593262,
+    "final_train_loss": 0.13173589883322384,
+    "final_val_loss": 2.195205174070416
+  },
+  "dataset": {
+    "subset": "nslt100",
+    "num_classes": 100,
+    "skeleton_keypoint_set": "selected_31",
+    "regions_active": [
+      "left_hand",
+      "right_hand",
+      "face"
+    ],
+    "num_samples": {
+      "train": 748,
+      "val": 165
+    },
+    "alignment": {
+      "train": {
+        "split": "train",
+        "skeleton_count": 748,
+        "regions_count": 748,
+        "matched_count": 748,
+        "missing_in_skeleton": 0,
+        "missing_in_regions": 0,
+        "label_mismatch": 0,
+        "missing_in_skeleton_examples": [],
+        "missing_in_regions_examples": [],
+        "skeleton_keypoint_set": "selected_31",
+        "active_regions": [
+          "left_hand",
+          "right_hand",
+          "face"
+        ]
+      },
+      "val": {
+        "split": "val",
+        "skeleton_count": 165,
+        "regions_count": 165,
+        "matched_count": 165,
+        "missing_in_skeleton": 0,
+        "missing_in_regions": 0,
+        "label_mismatch": 0,
+        "missing_in_skeleton_examples": [],
+        "missing_in_regions_examples": [],
+        "skeleton_keypoint_set": "selected_31",
+        "active_regions": [
+          "left_hand",
+          "right_hand",
+          "face"
+        ]
+      }
+    }
+  },
+  "fusion_model": {
+    "name": "gated_feature_fusion",
+    "hidden_dim": 128,
+    "freeze_skeleton": true,
+    "freeze_regions": true,
+    "trainable_modules": [
+      "skeleton_proj",
+      "region_proj",
+      "gate_network",
+      "classifier"
+    ],
+    "trainable_parameter_count": 193892
+  },
+  "branch_info": {
+    "device": "cuda",
+    "num_classes": 100,
+    "skeleton": {
+      "model_name": "STGCNPP",
+      "feature_dim": 256,
+      "checkpoint": "/kaggle/input/datasets/dminhvu474/wlasl-nslt100-gated-fusion-ready/wlasl-nslt100-gated-fusion-ready/checkpoints/skeleton/best.pt",
+      "checkpoint_loaded": true,
+      "graph_layout": "selected_31",
+      "graph_num_nodes": 31,
+      "config_source": "config_path"
+    },
+    "regions": {
+      "model_name": "RegionResNet18GRU",
+      "feature_dim": 768,
+      "checkpoint": "/kaggle/input/datasets/dminhvu474/wlasl-nslt100-gated-fusion-ready/wlasl-nslt100-gated-fusion-ready/checkpoints/regions/best.pt",
+      "checkpoint_loaded": true,
+      "config_source": "config_path"
+    },
+    "fusion_model": {
+      "name": "gated_feature_fusion",
+      "hidden_dim": 128,
+      "proj_dropout": 0.2,
+      "classifier_dropout": 0.5,
+      "freeze_skeleton": true,
+      "freeze_regions": true
+    }
+  },
+  "early_stopping": {
+    "enabled": true,
+    "monitor_metric": "val/top5",
+    "monitor_mode": "max",
+    "patience": 6,
+    "min_delta": 0.0,
+    "best_epoch": 22,
+    "best_metric": 0.8678787882400281,
+    "stopped_epoch": 28
+  },
+  "wandb_run_url": "https://wandb.ai/vuducminh474-hanoi-university-of-science-and-technology/wlasl-nslt100-gated-fusion/runs/35vrxl5q"
+}

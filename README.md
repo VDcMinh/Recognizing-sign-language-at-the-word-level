@@ -12,6 +12,9 @@ Word-level sign language recognition workspace for WLASL with three active backe
 - Active configs: `configs/`
 - CLI entrypoints: `scripts/preprocess/`, `scripts/train/`, `scripts/evaluate/`, `scripts/verify/`, `scripts/package/`
 - Model metadata: `model_registry/`
+- UI-serving artifact slots: `artifacts/serving/`
+- React demo UI: `apps/react-ui/`
+- React demo backend: `src/slr/demo_ui/` and `scripts/ui/run_react_demo_api.py`
 - Historical notes: `docs/history/`
 - Current reports: `reports/current/`
 
@@ -20,6 +23,7 @@ Word-level sign language recognition workspace for WLASL with three active backe
 - `data/` is treated as immutable project data and was not reorganized here.
 - `UI/` is intentionally untouched. This cleanup only prepares backend, config, and registry support for future UI integration.
 - Checkpoints are referenced from metadata; they are not stored inside `model_registry/`.
+- For future UI or backend inference integration, prefer `artifacts/serving/` plus `model_registry/registry_serving.yaml` as the stable deployment-facing layout.
 
 ## Active config examples
 
@@ -51,6 +55,46 @@ python scripts/train/train_gated_fusion.py --config configs/train/fusion/gated_f
 - `gated_fusion_nslt1000_v1`: `incomplete`
 
 The fusion entry is marked incomplete because this repo snapshot contains validated backbone checkpoints and configs, but no verified local fusion checkpoint.
+
+For the local React demo UI, use `model_registry/registry_serving.yaml` together with `artifacts/serving/`.
+
+## React Demo UI
+
+The repo now includes one local React-based demo that can:
+
+- upload one video
+- run prediction through `skeleton`, `regions`, or `fusion`
+- read the active subset from backend settings
+- resolve the matching `best.pt` from `artifacts/serving/<branch>/<subset>/`
+
+Manual subset switch:
+
+- edit `ACTIVE_SUBSET` in `src/slr/demo_ui/settings.py`
+- allowed values: `nslt100`, `nslt300`, `nslt1000`
+
+Run backend:
+
+```bash
+python scripts/ui/run_react_demo_api.py
+```
+
+Run frontend:
+
+```bash
+cd apps/react-ui
+npm install
+npm run dev
+```
+
+Default local addresses:
+
+- backend: `http://127.0.0.1:8008`
+- frontend: `http://127.0.0.1:5173`
+
+Important runtime note:
+
+- real prediction depends on your local environment already having the required PyTorch, torchvision, and RTMW/MMPose dependencies available
+- the backend uses the existing project pipeline: standardize video -> extract pose -> build skeleton/regions tensors -> load serving checkpoint -> predict
 
 ## Documentation
 

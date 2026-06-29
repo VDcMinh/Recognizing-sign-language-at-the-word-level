@@ -1,0 +1,9 @@
+{
+  "split": "test",
+  "checkpoint": "outputs/regions/nslt100-regions-resnet18-gru-resnet18-gru-ce-lr0p0001-wd0p001-bs8-ep50-noes-v1/checkpoints/best.pt",
+  "epoch": 37,
+  "loss": 4.084501953125,
+  "top1": 0.29,
+  "top5": 0.59,
+  "top10": 0.68
+}

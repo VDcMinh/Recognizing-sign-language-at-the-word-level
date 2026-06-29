@@ -1,0 +1,61 @@
+schema_version: 1
+
+identity:
+  id: skeleton_nslt300_sel31_serving_v1
+  display_name: "Skeleton ST-GCN++ - NSLT300"
+  description: "Serving slot for the NSLT300 selected_31 skeleton backbone."
+  branch: skeleton
+  task: isolated_sign_language_recognition
+  subset: nslt300
+  num_classes: 300
+  status: ready
+
+model:
+  name: stgcnpp
+  class_path: slr.branches.skeleton.models.stgcnpp.STGCNPP
+  feature_dim: 256
+  num_classes: 300
+
+input:
+  type: skeleton
+  keypoint_backend: rtmw_l
+  keypoint_set: selected_31
+  sequence_length: 150
+  expected_shape: [3, 150, 31, 1]
+
+artifacts:
+  checkpoint:
+    local_path: artifacts/serving/skeleton/nslt300/best.pt
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  class_map:
+    local_path: data/datasets/WLASL/index/subsets/nslt300/label_map.json
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  resolved_config:
+    local_path: artifacts/serving/skeleton/nslt300/config_resolved.yaml
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  metrics:
+    local_path: artifacts/serving/skeleton/nslt300/metrics.json
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  train_log:
+    local_path: artifacts/serving/skeleton/nslt300/train_log.csv
+    remote_type: null
+    remote_uri: null
+    sha256: null
+
+inference:
+  device: auto
+  top_k: 5
+  confidence_threshold: 0.0
+
+ui:
+  enabled: true
+  order: 210
+  allow_checkpoint_override: true

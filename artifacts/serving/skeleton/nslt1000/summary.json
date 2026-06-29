@@ -1,0 +1,27 @@
+{
+  "run_name": "nslt1000-sel31-stgcnpp-ce-lr0p005-bs16-wd0p0005-ep240-v1",
+  "loss_type": "cross_entropy",
+  "label_smoothing_epsilon": 0.0,
+  "keypoint_set": "selected_31",
+  "model_name": "stgcnpp",
+  "output_dir": "outputs/skeleton/nslt1000/nslt1000-sel31-stgcnpp-ce-lr0p005-bs16-wd0p0005-ep240-v1",
+  "best_checkpoint": "outputs/skeleton/nslt1000/nslt1000-sel31-stgcnpp-ce-lr0p005-bs16-wd0p0005-ep240-v1/checkpoints/best.pt",
+  "last_checkpoint": "outputs/skeleton/nslt1000/nslt1000-sel31-stgcnpp-ce-lr0p005-bs16-wd0p0005-ep240-v1/checkpoints/last.pt",
+  "config_path": "configs/train/skeleton_selected_31_nslt1000_stgcnpp.yaml",
+  "dataset": {
+    "subset": "nslt1000",
+    "num_classes": 1000,
+    "expected_shape": [
+      3,
+      150,
+      31,
+      1
+    ],
+    "num_samples": {
+      "train": 5001,
+      "val": 1290,
+      "test": 941
+    }
+  },
+  "wandb_run_url": "https://wandb.ai/vuducminh474-hanoi-university-of-science-and-technology/wlasl-skeleton-1000/runs/01vm0q2z"
+}

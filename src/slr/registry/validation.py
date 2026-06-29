@@ -124,6 +124,18 @@ def validate_model_record(record: ModelRecord, *, project_root: Path) -> None:
         project_root=project_root,
         required=record.identity.status == "ready",
     )
+    validate_artifact_ref(
+        record.artifacts.metrics,
+        label=f"{record.identity.id}.artifacts.metrics",
+        project_root=project_root,
+        required=False,
+    )
+    validate_artifact_ref(
+        record.artifacts.train_log,
+        label=f"{record.identity.id}.artifacts.train_log",
+        project_root=project_root,
+        required=False,
+    )
 
     input_type = str(record.input.get("type", "")).strip()
     if record.identity.branch == "skeleton":

@@ -1,0 +1,15 @@
+{
+  "loss_type": "cross_entropy",
+  "label_smoothing_epsilon": 0.0,
+  "best_epoch": 37,
+  "best_val_top1": 0.3518181819084919,
+  "best_val_top5": 0.64787878824002814,
+  "best_val_top10": 0.76060606060606063,
+  "best_val_loss": 3.8645478205247357,
+  "test_loss": 4.084501953125,
+  "test_top1": 0.29,
+  "test_top5": 0.59,
+  "test_top10": 0.68,
+  "final_train_loss": 2.1009872354925636,
+  "final_val_loss": 3.8041489138747706
+}

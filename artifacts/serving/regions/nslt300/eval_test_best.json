@@ -1,0 +1,9 @@
+{
+  "split": "test",
+  "checkpoint": "/kaggle/working/Recognizing-sign-language-at-the-word-level/outputs/regions/regions-resnet18-gru-nslt300-ce-lr1e-4-wd1e-3-allregions/checkpoints/best.pt",
+  "epoch": 32,
+  "loss": 4.998914320010116,
+  "top1": 0.249936908564356975,
+  "top5": 0.4845741325391204,
+  "top10": 0.63766561518896266
+}

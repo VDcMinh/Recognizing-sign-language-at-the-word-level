@@ -1,0 +1,65 @@
+registry_version: 1
+
+models:
+  - id: skeleton_nslt100_sel31_serving_v1
+    display_name: "Skeleton ST-GCN++ - NSLT100"
+    branch: skeleton
+    model_type: stgcnpp
+    status: ready
+    registry_file: models/serving/skeleton_nslt100_sel31_serving/model.yaml
+
+  - id: regions_nslt100_face_hands_serving_v1
+    display_name: "Regions ResNet18-GRU - NSLT100"
+    branch: regions
+    model_type: region_resnet18_gru
+    status: ready
+    registry_file: models/serving/regions_nslt100_face_hands_serving/model.yaml
+
+  - id: gated_fusion_nslt100_serving_v1
+    display_name: "Gated Fusion - NSLT100"
+    branch: fusion
+    model_type: gated_feature_fusion
+    status: ready
+    registry_file: models/serving/gated_fusion_nslt100_serving/model.yaml
+
+  - id: skeleton_nslt300_sel31_serving_v1
+    display_name: "Skeleton ST-GCN++ - NSLT300"
+    branch: skeleton
+    model_type: stgcnpp
+    status: ready
+    registry_file: models/serving/skeleton_nslt300_sel31_serving/model.yaml
+
+  - id: regions_nslt300_face_hands_serving_v1
+    display_name: "Regions ResNet18-GRU - NSLT300"
+    branch: regions
+    model_type: region_resnet18_gru
+    status: ready
+    registry_file: models/serving/regions_nslt300_face_hands_serving/model.yaml
+
+  - id: gated_fusion_nslt300_serving_v1
+    display_name: "Gated Fusion - NSLT300"
+    branch: fusion
+    model_type: gated_feature_fusion
+    status: ready
+    registry_file: models/serving/gated_fusion_nslt300_serving/model.yaml
+
+  - id: skeleton_nslt1000_sel31_serving_v1
+    display_name: "Skeleton ST-GCN++ - NSLT1000"
+    branch: skeleton
+    model_type: stgcnpp
+    status: ready
+    registry_file: models/serving/skeleton_nslt1000_sel31_serving/model.yaml
+
+  - id: regions_nslt1000_face_hands_serving_v1
+    display_name: "Regions ResNet18-GRU - NSLT1000"
+    branch: regions
+    model_type: region_resnet18_gru
+    status: ready
+    registry_file: models/serving/regions_nslt1000_face_hands_serving/model.yaml
+
+  - id: gated_fusion_nslt1000_serving_v1
+    display_name: "Gated Fusion - NSLT1000"
+    branch: fusion
+    model_type: gated_feature_fusion
+    status: ready
+    registry_file: models/serving/gated_fusion_nslt1000_serving/model.yaml

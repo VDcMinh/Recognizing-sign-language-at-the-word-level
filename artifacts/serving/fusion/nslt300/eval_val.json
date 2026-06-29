@@ -1,0 +1,42 @@
+{
+  "split": "val",
+  "checkpoint": "/kaggle/working/outputs/fusion/hen-4-gated-fusion-nslt300-sel31-ce-regions-lr5e-4-wd1e-3-h256-dr0306/best.pt",
+  "epoch": 38,
+  "num_samples": 446,
+  "loss": 2.823633876082074,
+  "top1": 0.5951569507394671,
+  "top5": 0.8268161440323287,
+  "top10": 0.89408071802336,
+  "gate_mean": 0.6011320881779418,
+  "gate_std": 0.147524640358615,
+  "gate_min": 0.014644693583250046,
+  "gate_max": 0.9957003593444824,
+  "build_info": {
+    "device": "cuda",
+    "num_classes": 300,
+    "skeleton": {
+      "model_name": "STGCNPP",
+      "feature_dim": 256,
+      "checkpoint": "/kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/checkpoints/skeleton/best.pt",
+      "checkpoint_loaded": true,
+      "graph_layout": "selected_31",
+      "graph_num_nodes": 31,
+      "config_source": "config_path"
+    },
+    "regions": {
+      "model_name": "RegionResNet18GRU",
+      "feature_dim": 768,
+      "checkpoint": "/kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/checkpoints/regions/best.pt",
+      "checkpoint_loaded": true,
+      "config_source": "config_path"
+    },
+    "fusion_model": {
+      "name": "gated_feature_fusion",
+      "hidden_dim": 256,
+      "proj_dropout": 0.3,
+      "classifier_dropout": 0.6,
+      "freeze_skeleton": true,
+      "freeze_regions": true
+    }
+  }
+}

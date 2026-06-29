@@ -1,0 +1,66 @@
+schema_version: 1
+
+identity:
+  id: gated_fusion_nslt300_serving_v1
+  display_name: "Gated Fusion - NSLT300"
+  description: "Serving slot for the NSLT300 gated fusion head."
+  branch: fusion
+  task: isolated_sign_language_recognition
+  subset: nslt300
+  num_classes: 300
+  status: ready
+
+model:
+  name: gated_feature_fusion
+  class_path: slr.branches.fusion.models.gated_feature_fusion.GatedFeatureFusion
+  hidden_dim: 256
+  skeleton_registry_id: skeleton_nslt300_sel31_serving_v1
+  regions_registry_id: regions_nslt300_face_hands_serving_v1
+  skeleton_feature_dim: 256
+  regions_feature_dim: 768
+  freeze_skeleton: true
+  freeze_regions: true
+  gate_type: sigmoid
+  fusion_strategy: gated_weighted_sum
+
+input:
+  type: fusion
+  skeleton_expected_shape: [3, 150, 31, 1]
+  regions_expected_shape: [3, 3, 64, 112, 112]
+
+artifacts:
+  checkpoint:
+    local_path: artifacts/serving/fusion/nslt300/best.pt
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  class_map:
+    local_path: data/datasets/WLASL/index/subsets/nslt300/label_map.json
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  resolved_config:
+    local_path: artifacts/serving/fusion/nslt300/config_resolved.yaml
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  metrics:
+    local_path: artifacts/serving/fusion/nslt300/metrics.json
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  train_log:
+    local_path: artifacts/serving/fusion/nslt300/train_log.csv
+    remote_type: null
+    remote_uri: null
+    sha256: null
+
+inference:
+  device: auto
+  top_k: 5
+  confidence_threshold: 0.0
+
+ui:
+  enabled: true
+  order: 230
+  allow_checkpoint_override: true

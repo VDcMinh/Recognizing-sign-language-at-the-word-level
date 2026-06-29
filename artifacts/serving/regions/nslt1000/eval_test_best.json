@@ -1,0 +1,9 @@
+{
+  "split": "test",
+  "checkpoint": "/kaggle/working/outputs/regions/regions-resnet18-gru-nslt1000-ce-ce-lr1e-4-wd1e-3-ready/checkpoints/best.pt",
+  "epoch": 35,
+  "loss": 6.054193911212917,
+  "top1": 0.2035706695163668,
+  "top5": 0.39945802339521908,
+  "top10": 0.52302869289575044
+}

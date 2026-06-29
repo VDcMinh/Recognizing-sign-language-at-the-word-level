@@ -148,4 +148,9 @@ UI/outputs/predictions/*
 UI/outputs/logs/*
 !UI/outputs/logs/.gitkeep
 
+# React demo UI
+apps/react-ui/node_modules/
+apps/react-ui/dist/
+runtime/react_ui/
+
 

@@ -1,0 +1,64 @@
+schema_version: 1
+
+identity:
+  id: regions_nslt1000_face_hands_serving_v1
+  display_name: "Regions ResNet18-GRU - NSLT1000"
+  description: "Serving slot for the NSLT1000 face-and-hands regions backbone."
+  branch: regions
+  task: isolated_sign_language_recognition
+  subset: nslt1000
+  num_classes: 1000
+  status: ready
+
+model:
+  name: region_resnet18_gru
+  class_path: slr.branches.regions.models.region_resnet18_gru.RegionResNet18GRU
+  backbone: resnet18
+  temporal_encoder: gru
+  feature_dim: 768
+  num_classes: 1000
+
+input:
+  type: regions
+  keypoint_backend: rtmw_l
+  active_regions: [left_hand, right_hand, face]
+  num_frames: 64
+  image_size: 112
+  expected_shape: [3, 3, 64, 112, 112]
+
+artifacts:
+  checkpoint:
+    local_path: artifacts/serving/regions/nslt1000/best.pt
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  class_map:
+    local_path: data/datasets/WLASL/index/subsets/nslt1000/label_map.json
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  resolved_config:
+    local_path: artifacts/serving/regions/nslt1000/config_resolved.yaml
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  metrics:
+    local_path: artifacts/serving/regions/nslt1000/metrics.json
+    remote_type: null
+    remote_uri: null
+    sha256: null
+  train_log:
+    local_path: artifacts/serving/regions/nslt1000/train_log.csv
+    remote_type: null
+    remote_uri: null
+    sha256: null
+
+inference:
+  device: auto
+  top_k: 5
+  confidence_threshold: 0.0
+
+ui:
+  enabled: true
+  order: 320
+  allow_checkpoint_override: true

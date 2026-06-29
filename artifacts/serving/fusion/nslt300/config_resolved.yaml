@@ -1,0 +1,142 @@
+config_path: /kaggle/working/gated_feature_fusion_nslt300_kaggle_run.yaml
+project_root: /kaggle/working/Recognizing-sign-language-at-the-word-level
+experiment:
+  name: hen-4-gated-fusion-nslt300-sel31-ce-regions-lr5e-4-wd1e-3-h256-dr0306
+  seed: 42
+  output_root: /kaggle/working/outputs/fusion
+  monitor_metric: val/top5
+  monitor_mode: max
+  save_every_epoch: false
+  output_dir: /kaggle/working/outputs/fusion/hen-4-gated-fusion-nslt300-sel31-ce-regions-lr5e-4-wd1e-3-h256-dr0306
+dataset:
+  subset: nslt300
+  num_classes: 300
+  skeleton:
+    data_root: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/branch_inputs/skeleton/rtmw_l
+    keypoint_set: selected_31
+    expected_shape:
+    - 3
+    - 150
+    - 31
+    - 1
+    manifests:
+      train: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/branch_inputs/skeleton/rtmw_l/manifests/nslt300_selected_31_train.csv
+      val: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/branch_inputs/skeleton/rtmw_l/manifests/nslt300_selected_31_val.csv
+      test: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/branch_inputs/skeleton/rtmw_l/manifests/nslt300_selected_31_test.csv
+    return_metadata: true
+    strict_shape_check: true
+  regions:
+    data_root: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/branch_inputs/regions/rtmw_l
+    expected_shape:
+    - 3
+    - 3
+    - 64
+    - 112
+    - 112
+    region_order:
+    - left_hand
+    - right_hand
+    - face
+    active_regions:
+    - left_hand
+    - right_hand
+    - face
+    manifests:
+      train: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/branch_inputs/regions/rtmw_l/manifests/nslt300_train.csv
+      val: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/branch_inputs/regions/rtmw_l/manifests/nslt300_val.csv
+      test: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/branch_inputs/regions/rtmw_l/manifests/nslt300_test.csv
+    normalize:
+      type: imagenet
+    return_metadata: true
+    strict_shape_check: true
+dataloader:
+  batch_size: 8
+  num_workers: 2
+  pin_memory: true
+  shuffle: false
+  shuffle_train: true
+train:
+  epochs: 80
+  device: cuda
+  optimizer: adamw
+  learning_rate: 0.0005
+  weight_decay: 0.001
+  loss: cross_entropy
+  grad_clip_norm: 1.0
+  amp: false
+scheduler:
+  enabled: true
+  name: cosine
+  min_lr: 1.0e-06
+  step_size: 10
+  gamma: 0.1
+early_stopping:
+  enabled: true
+  monitor_metric: val/top5
+  monitor_mode: max
+  patience: 12
+  min_delta: 0.0
+logging:
+  use_wandb: true
+  entity_env: WANDB_ENTITY
+  project: wlasl-nslt300-gated-fusion
+  run_name: hen-4-gated-fusion-nslt300-sel31-ce-regions-lr5e-4-wd1e-3-h256-dr0306
+  tags:
+  - nslt300
+  - gated_feature_fusion
+  - selected_31
+  - skeleton_ce
+  - regions_resnet18_gru
+  - freeze_backbone
+  - lr=0.0005
+  - wd=0.001
+  - bs=8
+  log_model: true
+runtime:
+  device: cuda
+  limit_train: null
+  limit_val: null
+  max_train_batches: null
+  max_val_batches: null
+skeleton_branch:
+  config_path: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/configs/skeleton_config_resolved.yaml
+  checkpoint_path: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/checkpoints/skeleton/best.pt
+  graph:
+    layout: selected_31
+    strategy: spatial
+    add_self_links: true
+    normalize_adjacency: true
+  model:
+    name: stgcnpp
+    in_channels: 3
+    num_nodes: 31
+    num_classes: 300
+    base_channels: 64
+    dropout: 0.5
+regions_branch:
+  config_path: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/configs/regions_config_resolved.yaml
+  checkpoint_path: /kaggle/input/datasets/dminhvu474/wlasl-nslt300-gated-fusion-ready/wlasl-nslt300-gated-fusion-ready/checkpoints/regions/best.pt
+  model:
+    name: region_resnet18_gru
+    num_classes: 300
+    num_regions: 3
+    in_channels: 3
+    clip_len: 64
+    crop_size: 112
+    pretrained: false
+    freeze_encoder: true
+    encoder_name: resnet18
+    encoder_feature_dim: 512
+    gru_hidden_size: 128
+    gru_num_layers: 1
+    bidirectional: true
+    dropout: 0.5
+    fusion: concat
+    use_valid_mask: true
+fusion_model:
+  name: gated_feature_fusion
+  hidden_dim: 256
+  proj_dropout: 0.3
+  classifier_dropout: 0.6
+  freeze_skeleton: true
+  freeze_regions: true

@@ -1,0 +1,23 @@
+{
+  "run_name": "nslt300-sel31-stgcnpp-ce-lr0005-bs16-wd0005-ep240-v1",
+  "keypoint_set": "selected_31",
+  "model": "stgcnpp",
+  "project": "wlasl-skeleton-300",
+  "lr": 0.05,
+  "batch_size": 16,
+  "weight_decay": 0.001,
+  "epochs": 240,
+  "best_epoch": 235,
+  "best_val_loss": 2.3217587759676537,
+  "best_val_top1": 0.58515695107357385,
+  "best_val_top5": 0.8066367729041609,
+  "best_val_top10": 0.855291481958911,
+  "test_loss": 2.5500003276187164,
+  "test_top1": 0.54324921159150096,
+  "test_top5": 0.7513249218877558,
+  "test_top10": 0.8359621456744919,
+  "final_train_loss": 1.1265171379180852,
+  "final_val_loss": 2.3722796108690614,
+  "wandb_run_url": "https://wandb.ai/vuducminh474-hanoi-university-of-science-and-technology/wlasl-skeleton-300/runs/tn7q5119",
+  "note": "Ghi nhận xét ở đây: ví dụ lr=0.05 tốt hơn lr=0.1, val/top1 tăng ổn định."
+}

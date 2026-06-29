@@ -1,0 +1,68 @@
+{
+  "run_name": "regions-resnet18-gru-nslt1000-ce-ce-lr1e-4-wd1e-3-ready",
+  "loss_type": "cross_entropy",
+  "label_smoothing_epsilon": 0.0,
+  "branch": "regions",
+  "model_name": "region_resnet18_gru",
+  "output_dir": "/kaggle/working/outputs/regions/regions-resnet18-gru-nslt1000-ce-ce-lr1e-4-wd1e-3-ready",
+  "best_checkpoint": "/kaggle/working/outputs/regions/regions-resnet18-gru-nslt1000-ce-ce-lr1e-4-wd1e-3-ready/checkpoints/best.pt",
+  "last_checkpoint": "/kaggle/working/outputs/regions/regions-resnet18-gru-nslt1000-ce-ce-lr1e-4-wd1e-3-ready/checkpoints/last.pt",
+  "config_path": "/kaggle/working/generated_configs/regions_resnet18_gru_nslt1000_ce_kaggle_run.yaml",
+  "dataset": {
+    "subset": "nslt1000",
+    "num_classes": 1000,
+    "expected_shape": [
+      3,
+      3,
+      64,
+      112,
+      112
+    ],
+    "region_order": [
+      "left_hand",
+      "right_hand",
+      "face"
+    ],
+    "active_regions": [
+      "left_hand",
+      "right_hand",
+      "face"
+    ],
+    "normalize": {
+      "type": "imagenet"
+    },
+    "num_samples": {
+      "train": 5001,
+      "val": 1290,
+      "test": 941
+    }
+  },
+  "model": {
+    "name": "region_resnet18_gru",
+    "pretrained": true,
+    "freeze_encoder": true,
+    "encoder_name": "resnet18",
+    "encoder_feature_dim": 512,
+    "gru_hidden_size": 128,
+    "gru_num_layers": 1,
+    "bidirectional": true,
+    "fusion": "concat",
+    "use_valid_mask": true
+  },
+  "early_stopping": {
+    "enabled": false,
+    "monitor": "val_top5",
+    "mode": "max",
+    "patience": 10,
+    "min_delta": 0.0,
+    "stopped_epoch": null,
+    "best_epoch": null,
+    "best_metric": null
+  },
+  "stopped_epoch": null,
+  "best_epoch": null,
+  "best_metric": null,
+  "monitor": null,
+  "patience": null,
+  "wandb_run_url": "https://wandb.ai/vuducminh474-hanoi-university-of-science-and-technology/wlasl-region-1000/runs/75m47bg0"
+}

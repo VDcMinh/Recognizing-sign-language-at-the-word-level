@@ -5,6 +5,7 @@ This directory stores model metadata only. Checkpoints stay outside `model_regis
 ## Files
 
 - `registry.yaml`: summary index for UI or backend discovery
+- `registry_serving.yaml`: scaffolded UI/serving index with fixed artifact slots for `nslt100`, `nslt300`, and `nslt1000`
 - `models/*/model.yaml`: per-model metadata records
 
 ## Current entries
@@ -12,6 +13,15 @@ This directory stores model metadata only. Checkpoints stay outside `model_regis
 - `skeleton_nslt1000_sel31_v1`: ready
 - `regions_nslt1000_face_hands_v1`: ready
 - `gated_fusion_nslt1000_v1`: incomplete
+
+## Serving Scaffold
+
+Use `registry_serving.yaml` when you want a stable place to drop curated model artifacts for a future UI.
+
+- The artifact slots live under `artifacts/serving/<branch>/<subset>/`
+- Replace the placeholder `config_resolved.yaml`, `metrics.json`, `train_log.csv`, and `class_map.json` with real files when ready
+- Add `best.pt` later without changing any registry path
+- The scaffold registry keeps every entry at `status: incomplete` by default so it remains safe until you decide to promote a model
 
 ## Notes
 

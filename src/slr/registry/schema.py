@@ -43,6 +43,8 @@ class ArtifactBundle:
     checkpoint: ArtifactRef = field(default_factory=ArtifactRef)
     class_map: ArtifactRef = field(default_factory=ArtifactRef)
     resolved_config: ArtifactRef = field(default_factory=ArtifactRef)
+    metrics: ArtifactRef = field(default_factory=ArtifactRef)
+    train_log: ArtifactRef = field(default_factory=ArtifactRef)
 
     @classmethod
     def from_dict(cls, value: Any) -> "ArtifactBundle":
@@ -52,6 +54,8 @@ class ArtifactBundle:
             checkpoint=ArtifactRef.from_value(value.get("checkpoint")),
             class_map=ArtifactRef.from_value(value.get("class_map")),
             resolved_config=ArtifactRef.from_value(value.get("resolved_config")),
+            metrics=ArtifactRef.from_value(value.get("metrics")),
+            train_log=ArtifactRef.from_value(value.get("train_log")),
         )
 
 
