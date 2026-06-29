@@ -1,8 +1,10 @@
 numpy==1.26.4
 pandas
 opencv-python==4.10.0.84
+pillow
 pyyaml
 tqdm
 scikit-learn
 matplotlib
+streamlit
 wandb
